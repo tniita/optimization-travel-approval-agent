@@ -1,28 +1,28 @@
-# Basic Hosted Agent (Responses Protocol)
+# 基本的なホステッドエージェント（Responses プロトコル）
 
-A minimal [Agent Framework](https://github.com/microsoft/agent-framework) agent hosted on Microsoft Foundry using the **Responses protocol**. This sample demonstrates basic request/response interaction and multi-turn conversations.
+**Responses プロトコル**を使って Microsoft Foundry 上でホストされる、最小構成の [Agent Framework](https://github.com/microsoft/agent-framework) エージェントです。基本的なリクエスト/レスポンスのやりとりと、マルチターン会話をデモします。
 
-## How it works
+## 仕組み
 
-The agent uses `FoundryChatClient` from the Agent Framework and is served via `ResponsesHostServer`, which exposes a REST API compatible with the OpenAI Responses protocol. See [main.py](main.py) for the implementation.
+このエージェントは Agent Framework の `FoundryChatClient` を使用し、`ResponsesHostServer` 経由で提供されます。`ResponsesHostServer` は OpenAI Responses プロトコル互換の REST API を公開します。実装は [main.py](main.py) を参照してください。
 
-## Option 1: Azure Developer CLI (`azd`)
+## 方法 1: Azure Developer CLI (`azd`)
 
-### Prerequisites
+### 前提条件
 
-1. **Azure Developer CLI (`azd`)** — [Install azd](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd)
-2. Install the AI agent extension:
+1. **Azure Developer CLI (`azd`)** — [azd をインストールする](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd)
+2. AI エージェント拡張機能をインストール:
    ```bash
    azd ext install azure.ai.agents
    ```
-3. Authenticate:
+3. 認証:
    ```bash
    azd auth login
    ```
 
-### Initialize the agent project
+### エージェントプロジェクトを初期化する
 
-No cloning required. Create a new folder and initialize from the manifest:
+クローンは不要です。新しいフォルダーを作成し、マニフェストから初期化します:
 
 ```bash
 mkdir my-basic-agent && cd my-basic-agent
@@ -30,83 +30,83 @@ mkdir my-basic-agent && cd my-basic-agent
 azd ai agent init -m https://github.com/microsoft-foundry/foundry-samples/blob/main/samples/python/hosted-agents/agent-framework/responses/01-basic/agent.manifest.yaml
 ```
 
-Follow the prompts to configure your Foundry project and model deployment. If you don't have an existing Foundry project, `azd ai agent init` will guide you through creating one.
+プロンプトに従って Foundry プロジェクトとモデルデプロイを設定します。既存の Foundry プロジェクトがない場合でも、`azd ai agent init` が作成手順を案内してくれます。
 
-### Provision Azure resources (if needed)
+### Azure リソースをプロビジョニングする（必要な場合）
 
-If you don't already have a Foundry project and model deployment:
+Foundry プロジェクトとモデルデプロイがまだない場合:
 
 ```bash
 azd provision
 ```
 
-### Run the agent locally
+### ローカルでエージェントを実行する
 
 ```bash
 azd ai agent run
 ```
 
-The agent host will start on `http://localhost:8088`.
+エージェントホストが `http://localhost:8088` で起動します。
 
-### Invoke the local agent
+### ローカルエージェントを呼び出す
 
-In a separate terminal, from the project directory:
+別のターミナルで、プロジェクトディレクトリから実行します:
 
 ```bash
 azd ai agent invoke --local "Hi"
 ```
 
-### Deploy to Foundry
+### Foundry にデプロイする
 
-Once tested locally, deploy to Microsoft Foundry:
+ローカルでの動作確認ができたら、Microsoft Foundry にデプロイします:
 
 ```bash
 azd deploy
 ```
 
-For the full deployment guide, see [Deploy a hosted agent](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent).
+デプロイの完全なガイドは [ホステッドエージェントをデプロイする](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent) を参照してください。
 
-### Invoke the deployed agent
+### デプロイ済みエージェントを呼び出す
 
 ```bash
 azd ai agent invoke "Hi"
 ```
 
-## Option 2: VS Code (Foundry Toolkit)
+## 方法 2: VS Code（Foundry Toolkit）
 
-### Prerequisites
+### 前提条件
 
-1. **VS Code** with the **[Foundry Toolkit](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.azure-ai-foundry)** extension installed.
-2. Sign in to Azure in VS Code.
+1. **[Foundry Toolkit](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.azure-ai-foundry)** 拡張機能をインストールした **VS Code**。
+2. VS Code で Azure にサインインしておくこと。
 
-### Create the project
+### プロジェクトを作成する
 
-1. Open the Command Palette (`Ctrl+Shift+P`) and run **Foundry Toolkit: Create Hosted Agent**.
-2. Select this sample from the gallery. The extension scaffolds the project into a new workspace and generates `agent.yaml`, `.env`, and `.vscode/tasks.json` + `launch.json` automatically.
-3. Complete the **Foundry Project Setup** to pick the subscription and Foundry project (or create a new one).
+1. コマンドパレット (`Ctrl+Shift+P`) を開き、**Foundry Toolkit: Create Hosted Agent** を実行します。
+2. ギャラリーからこのサンプルを選択します。拡張機能が新しいワークスペースにプロジェクトをスキャフォールドし、`agent.yaml`、`.env`、`.vscode/tasks.json` + `launch.json` を自動生成します。
+3. **Foundry Project Setup** を完了して、サブスクリプションと Foundry プロジェクトを選択します（新規作成も可）。
 
-### Run and debug the agent
+### エージェントを実行・デバッグする
 
-Press **F5** to start the agent in debug mode. The agent host will start on `http://localhost:8088`.
+**F5** を押すとデバッグモードでエージェントが起動します。エージェントホストは `http://localhost:8088` で起動します。
 
-### Test with Agent Inspector
+### Agent Inspector でテストする
 
-1. Open the Command Palette (`Ctrl+Shift+P`) and run **Foundry Toolkit: Open Agent Inspector**.
-2. The Inspector connects to the running agent. Send messages to chat and view streamed responses.
+1. コマンドパレット (`Ctrl+Shift+P`) を開き、**Foundry Toolkit: Open Agent Inspector** を実行します。
+2. Inspector が実行中のエージェントに接続します。メッセージを送信して、ストリーミングされる応答を確認できます。
 
-### Deploy to Foundry
+### Foundry にデプロイする
 
-1. Open the Command Palette (`Ctrl+Shift+P`) and run **Foundry Toolkit: Deploy Hosted Agent**. The extension opens a **Deploy Hosted Agent** wizard and reads `agent.yaml` to auto-populate settings.
-2. If prompted, complete **Foundry Project Setup** to select subscription and project.
-3. On the **Basics** tab, choose deployment method (**Code** or **Container**) and confirm the agent name.
-4. On **Review + Deploy**, confirm runtime details, pick **CPU and Memory** size, and click **Deploy**.
-5. After deployment, invoke the agent in the Agent Playground and stream live logs from the **Logs** tab.
+1. コマンドパレット (`Ctrl+Shift+P`) を開き、**Foundry Toolkit: Deploy Hosted Agent** を実行します。拡張機能が **Deploy Hosted Agent** ウィザードを開き、`agent.yaml` を読んで設定を自動入力します。
+2. 求められたら **Foundry Project Setup** を完了し、サブスクリプションとプロジェクトを選択します。
+3. **Basics** タブでデプロイ方式（**Code** または **Container**）を選び、エージェント名を確認します。
+4. **Review + Deploy** でランタイムの詳細を確認し、**CPU and Memory** サイズを選んで **Deploy** をクリックします。
+5. デプロイ後は Agent Playground でエージェントを呼び出し、**Logs** タブからライブログをストリーミングできます。
 
-## Next steps
+## 次のステップ
 
-- [Quickstart: Create a hosted agent](https://learn.microsoft.com/en-us/azure/foundry/agents/quickstarts/quickstart-hosted-agent) — end-to-end walkthrough using `azd`
-- [Tool catalog](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/tool-catalog) — browse available tools to extend your agent (Bing Search, Azure AI Search, file search, code interpreter, and more)
-- [Manage hosted agents](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/manage-hosted-agent) — monitor and manage deployed agents
-- [Add tools to your agent](../02-tools/) — sample with local tool functions
-- [Connect to MCP servers](../03-mcp/) — sample using remote MCP tool providers
-- [Use Foundry Toolbox](../04-foundry-toolbox/) — sample with Azure Foundry Toolbox integration
+- [クイックスタート: ホステッドエージェントを作成する](https://learn.microsoft.com/en-us/azure/foundry/agents/quickstarts/quickstart-hosted-agent) — `azd` を使ったエンドツーエンドの解説
+- [ツールカタログ](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/tool-catalog) — エージェントを拡張するツール一覧（Bing Search、Azure AI Search、ファイル検索、コードインタープリターなど）
+- [ホステッドエージェントを管理する](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/manage-hosted-agent) — デプロイ済みエージェントの監視と管理
+- [エージェントにツールを追加する](../02-tools/) — ローカルツール関数のサンプル
+- [MCP サーバーに接続する](../03-mcp/) — リモート MCP ツールプロバイダーを使うサンプル
+- [Foundry Toolbox を使う](../04-foundry-toolbox/) — Azure Foundry Toolbox 連携のサンプル

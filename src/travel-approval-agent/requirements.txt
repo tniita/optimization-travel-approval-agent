@@ -1,7 +1,14 @@
-azure-ai-agentserver-responses==1.0.0b7
-azure-ai-projects==2.0.1
-azure-identity>=1.25.0
-agent-framework>=1.7.0
-agent-framework-foundry-hosting
-azure-ai-agentserver-optimization
-pydantic
+# Agent Framework — Foundry only. The `agent-framework` meta-package additionally
+# pulls in every other provider (Anthropic, Bedrock, Gemini, Ollama, Redis, ...).
+agent-framework-core>=1.13.0
+agent-framework-foundry>=1.10.4
+
+# Hosted-agent runtime (Responses protocol) and optimizer config loader.
+# These have no stable release yet; the pre-release bound is required or the
+# resolver searches for a non-existent stable version and backtracks for minutes.
+agent-framework-foundry-hosting>=1.0.0b260730
+azure-ai-agentserver-optimization>=1.0.0b1
+azure-ai-agentserver-responses>=1.0.0b8,<2  # transitive; listed so uv allows its pre-release
+
+azure-identity>=1.25.3
+pydantic>=2.13.4
