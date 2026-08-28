@@ -24,7 +24,7 @@
 | 指示チューニング | `instructions.md` | システムプロンプトが書き換えられる |
 | スキル改善 | `skills/` ディレクトリ | スキルの説明・本文が洗練される |
 | ツール最適化 | `tools.json` | ツールの説明とパラメーター定義が改善される |
-| モデル選択 | `eval.yaml` 内の `optimization_config.model` | スコアとトークンコストから最適なモデルデプロイが選ばれる |
+| モデル選択 | `eval.yaml` の `options.optimization_config.model`（手動で追記） | スコアとトークンコストから最適なモデルデプロイが選ばれる |
 
 ### ルーブリック評価器
 
@@ -55,8 +55,8 @@ pip install azure-ai-agentserver-optimization
 
 1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト（`azd ai agent invoke "test"` で確認できます）。
 2. プロジェクト内の 2 つのモデルデプロイ:
-   - **評価モデル**（例: `gpt-4.1-mini`）— 応答を採点するジャッジ。
-   - **最適化モデル**（「リフレクション」モデル）— サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.3`、`gpt-5.4` から選択。候補構成を生成します。
+   - **評価モデル**（例: `gpt-5.6-sol`）— 応答を採点するジャッジ。Chat completion modelであること。
+   - **最適化モデル**（「リフレクション」モデル）— サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro` 、`DeepSeek-V-3.2`  から選択。候補構成を生成します。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
 
 > **重要 — サイレント障害**: 評価モデルがプロジェクトにデプロイされていない場合、**エラーメッセージなしにすべてのスコアがゼロ**になります。実行前に必ず Foundry ポータルでデプロイを確認してください。
@@ -66,7 +66,6 @@ pip install azure-ai-agentserver-optimization
 ```
 src/<agent-name>/
 ├── main.py
-├── agent.yaml
 └── .agent_configs/
     └── baseline/
         ├── metadata.yaml      # モデル、ファイル参照、temperature
@@ -84,19 +83,77 @@ skill_dir: skills
 tools_file: tools.json
 ```
 
+### エージェントをホステッドエージェントとしてデプロイする
+
+最適化サイクルは**デプロイ済み**のエージェントを対象にします。まだ Foundry 上に無い場合は、以下でデプロイします。本コンテンツの `azure.yaml` は直接コードデプロイ（Docker / ACR 不要）用に構成済みです。
+
+#### 1. azd 環境を作成し、デプロイ先を指定する
+
+`azure.yaml` のあるリポジトリルートで実行します。
+
+```bash
+azd auth login
+azd env new <環境名>
+
+azd env set FOUNDRY_PROJECT_ENDPOINT "https://<account>.services.ai.azure.com/api/projects/<project>"
+azd env set AZURE_AI_PROJECT_ENDPOINT "https://<account>.services.ai.azure.com/api/projects/<project>"
+azd env set AZURE_AI_PROJECT_ID "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
+azd env set AZURE_SUBSCRIPTION_ID "<sub>"
+azd env set AZURE_LOCATION "<region>"
+azd env set AZURE_RESOURCE_GROUP "<rg>"
+```
+
+> `FOUNDRY_PROJECT_ENDPOINT` を設定しないと `azd ai ...` 系コマンドがプロジェクトを解決できません。
+
+Foundry プロジェクトごと新規に作る場合は、上記の代わりに `azd provision` を実行します。
+
+#### 2. デプロイする
+
+```bash
+azd ai agent doctor                              # 事前チェック
+azd deploy travel-approval-agent --no-prompt
+```
+
+成功すると新しいバージョンが発行され、Playground URL と Responses エンドポイントが表示されます。
+
+#### 3. 動作確認する
+
+```bash
+azd ai agent show --output json     # "status": "active" を確認
+azd ai agent invoke "3日間の東京出張を申請します。航空券とホテルで合計 2,800 ドルです。承認できますか？"
+```
+
+ポリシー参照・部門予算の確認・代替案の提示が応答に含まれていれば、3 つのツールがすべて動作しています。失敗した場合は `azd ai agent monitor --tail 120` でコンテナログを確認します。
+
 ---
 
-## 3. Step 1 — 評価スイートを初期化する
+## 3. Step 1 — 評価スイートを生成する
 
-`azure.yaml` があるフォルダーから実行します。ウィザードが `azd` 環境からエージェントを自動検出し、エージェントのドメインに合わせた**データセット**と**ルーブリック評価器**を生成します。
+`azure.yaml` があるフォルダーから実行します。`azd` 環境からエージェントを自動検出し、エージェントのドメインに合わせた**データセット**と**ルーブリック評価器**を生成します。
 
 ### コマンド
 
-```powershell
-azd ai agent eval init
+```bash
+azd ai agent eval generate
 ```
 
-### 対話実行の出力例
+### 主なオプション
+
+| オプション | 意味 | 既定値 |
+|---|---|---|
+| `--gen-instruction <text>` / `--gen-instruction-file <path>` | データセット・評価器生成の元にする指示文。`.agent_configs/baseline/metadata.yaml` があれば不要 | 自動検出 |
+| `--eval-model <name>` | 生成と評価に使うモデルデプロイ | azd 環境から解決 |
+| `--max-samples <n>` | 合成データセットの行数 (15〜1000) | 15 |
+| `--name <suite-name>` | スイート名 | `smoke-core` |
+| `--out-file <path>` | eval 構成の出力先 | `eval.yaml` |
+| `--dataset <path\|name>` | 生成せず既存のデータセットを使う | （生成する） |
+| `--evaluator <name>` | 組み込み／カスタム評価器を指定（繰り返し可） | （生成する） |
+| `--trace-days <n>` | 過去 N 日のトレースを評価器生成に含める | 0（使わない） |
+| `--reset-defaults` | 既存の `eval.yaml` を上書き | （上書きしない） |
+| `--no-wait` | ジョブを投げて即座に戻る | （完了まで待つ） |
+
+### 実行結果
 
 ```text
 Resolving eval context...
@@ -106,43 +163,53 @@ Resolving eval context...
 
 Detected eval target:
   (✓) Service:        travel-approval-agent (azure.yaml)
-  (✓) Agent:          travel-approval-agent
-  (✓) Version:        2
-  (✓) Kind:           hosted
-  (✓) Endpoint:       https://aifproject10.services.ai.azure.com/api/projects/proj-default
-  ...
-? Eval suite name: eval-dataset-travel-approval-agent
-? Instruction file: .agent_configs\baseline\instructions.md
-? Include agent traces for evaluator generation?: No
-? Select a model deployment: gpt-5.4-mini
-? Max samples (between 15 and 1000): 15
+  (✓) Agent:          travel-approval-agent (AGENT_TRAVEL_APPROVAL_AGENT_NAME)
+  (✓) Version:        5 (AGENT_TRAVEL_APPROVAL_AGENT_VERSION)
+  (✓) Kind:           hosted (azure.yaml (inline))
+  (✓) Endpoint:       https://<account>.services.ai.azure.com/api/projects/<project> (FOUNDRY_PROJECT_ENDPOINT)
+  (✓) Project:        src/travel-approval-agent
+  Eval config:      src/travel-approval-agent/eval.yaml
 
-  (✓) Done  Evaluator generation  (18 seconds)
+   Agent Config:     src/travel-approval-agent/.agent_configs/baseline/metadata.yaml
+  (–) Running  Evaluator generation  (evaluatorgen-smoke-core-v1-bbd2a9a2)
+  (–) Running  Dataset generation  (datagen-cc19fd84740448638aba348975cb4046)
+  (✓) Done  Evaluator generation  (25 seconds)
   (✓) Done  Dataset generation  (2m 7s)
 
 Eval suite created
-   Dataset:    eval-dataset-travel-approval-agent (1.0)
-   Evaluator:  eval-dataset-travel-approval-agent (1)
+   Config:     src/travel-approval-agent/eval.yaml
+   Dataset:    smoke-core (1.0)
+               src/travel-approval-agent/datasets/smoke-core
+   Evaluator:  smoke-core (1)
+               src/travel-approval-agent/evaluators/smoke-core/rubric_dimensions.json
 
    Evaluator dimensions (7):
      Weight  Dimension
      ──────  ─────────
          10  policy_compliance_decision
-          6  budget_constraint_handling
-          5  missing_or_conflicting_information_strictness
-          4  cheaper_alternative_relevance
-          4  decision_traceability
-          3  workflow_discipline
+          6  budget_feasibility_check
+          5  missing_information_handling
+          5  cheaper_alternative_suggestion
+          4  decision_terminality_consistency
+          3  pressure_resistance
           5  general_quality
+
+   Next steps:
+     azd ai agent eval run
+     azd ai agent eval update
 ```
+
+スイート名は既定で **`smoke-core`** になります。変えたい場合は `--name` を指定してください。
 
 ### 生成される成果物
 
 | 成果物 | 場所 |
 |---|---|
 | `eval.yaml` | `src/<agent>/eval.yaml`（実行可能なレシピ） |
-| 合成データセット (JSONL) | `src/<agent>/datasets/<suite-name>/` |
+| 合成データセット (JSONL) | `src/<agent>/datasets/<suite-name>/<suite-name>_dg.jsonl` |
 | ルーブリック（ディメンション JSON） | `src/<agent>/evaluators/<suite-name>/rubric_dimensions.json` |
+
+データセットと評価器は Foundry プロジェクトにも登録され、実行の最後にポータルの URL が表示されます。
 
 <figure>
   <img src="images/Rubric_evaluator.png" alt="Rubric_evaluator" width="600" />
@@ -153,44 +220,30 @@ Eval suite created
 ### 生成された `eval.yaml`
 
 ```yaml
-name: eval-dataset-travel-approval-agent
+name: smoke-core
 agent:
     name: travel-approval-agent
     kind: hosted
-    version: "2"
-    config: .agent_configs\baseline\metadata.yaml
-dataset_reference:
-    name: eval-dataset-travel-approval-agent
+    config: .agent_configs/baseline/metadata.yaml
+dataset:
+    name: smoke-core
     version: "1.0"
-    local_uri: datasets\eval-dataset-travel-approval-agent
+    local_uri: datasets/smoke-core
 evaluators:
-    - name: eval-dataset-travel-approval-agent
+    - name: smoke-core
       version: "1"
-      local_uri: evaluators\eval-dataset-travel-approval-agent\rubric_dimensions.json
+      local_uri: evaluators/smoke-core/rubric_dimensions.json
 options:
     eval_model: gpt-5.4-mini
-    optimization_model: gpt-5.4
-    max_iterations: 5
-    optimization_config:
-        model:
-        - gpt-4.1-mini
-        - gpt-5.4-mini
 max_samples: 15
 ```
 
-### 主なオプション
-
-| オプション | 意味 | 既定値 |
-|---|---|---|
-| `eval_model` | 応答を採点するジャッジ LLM | （必須） |
-| `optimization_model` | 候補を生成するリフレクション LLM | （必須）— `gpt-5` ファミリーである必要あり |
-| `max_iterations` | 戦略ごとに生成される候補数。１イテレーション = １候補 | 5 |
-| `optimization_config.model` | モデル選択で評価するデプロイのリスト | （省略時は無効） |
-| `max_samples` | 合成データセットの行数上限 (15〜1000) — 上限値であり保証値ではない | 15 |
 
 ### ルーブリックのディメンション
 
 エージェントの指示文から自動生成されます。`general_quality` ディメンションは `always_applicable: true` を持つ**編集不可の残差項**です。それ以外は `rubric_dimensions.json` で id・説明・重みを編集できます。編集後は `azd ai agent eval update` で再登録してください。
+
+> ディメンション名と重みは生成のたびに変わります。上の 7 つは今回の実行結果であり、固定のカタログではありません。
 
 ---
 
@@ -200,30 +253,41 @@ max_samples: 15
 
 ### コマンド
 
-```powershell
+```bash
 azd ai agent eval run
 ```
+
+実行の冒頭で `Updated eval.yaml with current environment values` と表示され、azd 環境の `AGENT_<SERVICE>_VERSION` が `eval.yaml` の `agent.version` に書き戻されます。デプロイ後にこのフィールドを手で直す必要はありません。
 
 ### 出力例
 
 ```text
-? Eval run name: eval-dataset-travel-approval-agent
+Resolving eval context...
+  Reading project configuration...
+  Detecting agent service...
+  Resolving Foundry project endpoint...
+  Updated eval.yaml with current environment values
 Eval run started
-   Eval: eval_9b61f1cf5838401d98226c21df36a5c5
-   Run:  evalrun_c23d5389d5b0402aa62c8bfac3340f23
+   Eval: eval_5162dae33dd248eea2563c3f0f09b952
+   Run:  evalrun_5b5f28ad8bf3417e9f455ce6df5c4d5c
    Report: https://ai.azure.com/...
-  (✓) Done  Eval run  (3m 15s)
+  (✓) Done  Eval run  (2m 6s)
 
-Name:       eval-dataset-travel-approval-agent
+Eval:       eval_5162dae33dd248eea2563c3f0f09b952
+Run:        evalrun_5b5f28ad8bf3417e9f455ce6df5c4d5c
+Name:       smoke-core
 Status:     Completed
-Agent:      travel-approval-agent v3
+Agent:      travel-approval-agent v5
 
 Results:    15 total, 7 passed, 8 failed, 0 errored
+
+Per-criteria results:
+  smoke-core: 7 passed, 8 failed, 0 errored
 ```
 
 **ベースラインの合格率: 7/15 (47%)** — これが最適化で改善すべき出発点です。
 
-タスク別・ディメンション別のスコアを掛け合わせて見るには、Foundry ポータルで **Report** の URL を開いてください。
+タスク別・ディメンション別のスコアを掛け合わせて見るには、Foundry ポータルで **Report** の URL を開いてください。過去の実行は `azd ai agent eval list` / `azd ai agent eval show` でも確認できます。
 
 <figure>
   <img src="images/Rubric_score.png" alt="Rubric_score" width="600" />
@@ -236,73 +300,85 @@ Results:    15 total, 7 passed, 8 failed, 0 errored
 
 ### コマンド
 
-```powershell
-azd ai agent optimize
+```bash
+azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 5
+```
+
+**対話プロンプトはありません。** `--optimize-model` は必須で、省略すると即座に次のエラーで停止します。
+
+```text
+ERROR: invalid config: options.optimization_model is required:
+       pass --optimize-model <name>, or add 'optimization_model' under 'options:' in your config
+```
+
+毎回フラグで渡す代わりに、`eval.yaml` の `options:` に書いておくこともできます。モデル選択ターゲットを有効にする `optimization_config.model` もここに追記します（`eval generate` は書き出しません）。
+
+```yaml
+options:
+    eval_model: gpt-5.4-mini
+    optimization_model: gpt-5.4
+    optimization_config:
+        model:
+            - gpt-4.1-mini
+            - gpt-5.4-mini
 ```
 
 ### 内部で起きること
 
-1. 現在のベースラインを `.agent_configs/baseline/metadata.yaml` に保存します（サービス側にバージョン付きベースラインとして再登録されます）。
+1. 現在のベースラインを `.agent_configs/baseline/metadata.yaml` から読み込みます。
 2. 最適化ターゲットを検出します:
-   - `instructions.md` あり → 指示チューニング
+   - `instructions.md` あり → 指示チューニング（strategy: `system_prompt`）
    - `skills/` あり → スキル改善
    - `tools.json` あり → ツール最適化
    - `optimization_config.model` あり → モデル選択
-3. 戦略ごとに `max_iterations` 個の候補を生成します。
+3. `--max-candidates` 個の候補を生成します（既定 5）。
 4. 各候補をデータセットで評価・ランク付けし、勝者を ★ で示します。
 
-### 対話実行の例
+> 実行開始時に次のメッセージが出ます。**候補はドラフトバージョンとして作られ、明示的にデプロイするまで稼働中のエージェントには影響しません。**
+>
+> ```text
+> Note: Optimization creates candidate agents as draft versions.
+> Your live agent versions are not affected until you explicitly deploy a candidate.
+> ```
+
+### 実行結果
 
 ```text
-  Warning: Optimization will create new versions of your agent. If your application
-  routes traffic to the "latest" version, these new versions may serve live traffic
-  immediately. Consider pinning to a specific version before starting optimization.
-
-? Found eval.yaml in project. Use it for optimization?: Yes
-? Instruction file: .agent_configs\baseline\instructions.md
-? Skills directory (enter to skip): .agent_configs\baseline\skills
-? Tools file (enter to skip): .agent_configs\baseline\tools.json
-? Would you like to specify target models for optimization?: Yes
-? Select target models for optimization (baseline: gpt-4.1-mini, excluded): gpt-5.4
-? Select an optimization model (gpt-5 family recommended): gpt-5.4
-
-Optimizing agent "travel-approval-agent"...
-  Job ID: opt_ecfa4402fce04bfe9afb87fde9aa0f5c
-  Portal: https://ai.azure.com/...
-
-  ⠇ completed · iteration 5 · score: 0.57 · 34m35s
+  Total time: 9m58s
 
 Results:
-  Candidate              Score    Pass  Eval
-  ──────────────────── ─────── ───────  ──────
-  baseline                0.47     27%  View
-  candidate_1 ★           0.57     53%  View
-  candidate_2             0.52     47%  View
-  candidate_3             0.53     60%  View
-  candidate_4             0.49     47%  View
+  Candidate               Score  Eval  Strategy
+  ──────────────────── ────────  ────  ────────
+  baseline                0.391  View  -
+  candidate_1 ★           0.529  View  system_prompt
+
+  Candidate IDs:
+      baseline             cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0000
+    ★ candidate_1          cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0001
 
   Apply the best candidate locally, then deploy:
-    azd ai agent optimize apply --candidate cand_c923c81a39eb4c6fba5768ede48e3eab
+    azd ai agent optimize apply --candidate cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0001
     azd deploy
 ```
 
 ### 結果の読み方
 
-- **ベースライン 0.47 → 勝者 0.57** = +0.10 → Learn の基準では「有意な改善」です。
-- 勝者は**常に candidate_1 とは限りません**。筆者の再実行では `candidate_4` が勝ちました。必ず ★ を確認してください。
-- CLI の表には各候補がどの**モデル**を使ったかが表示されません。候補別のモデルやスコア vs トークンのプロットを見るには、**Foundry ポータルの Optimize タブ**（実行出力に URL があります）を使います。
+- **ベースライン 0.391 → 勝者 0.529** = +0.14 → Learn の基準では「有意な改善」です。
+- `Strategy` 列に、その候補がどの最適化ターゲットで生成されたかが出ます（上の例は `system_prompt` = 指示チューニング）。
+- 勝者は**常に candidate_1 とは限りません**。必ず ★ を確認してください。
+- **`Candidate IDs:` ブロックの ID を次のステップで使います。**
+- 候補別のモデルやスコア vs トークンのプロットを見るには、**Foundry ポータルの Optimize タブ**を使います。過去の実行は `azd ai agent optimize list` / `azd ai agent optimize status <id>` でも確認できます。
 
 ### 所要時間の目安
 
-[Optimize instructions — Max iterations](https://learn.microsoft.com/azure/foundry/agents/how-to/optimize-agent-targets#optimize-instructions) より:
+実測（15 タスクのデータセット + `gpt-5.4-mini` ジャッジ + `gpt-5.4` リフレクション）:
 
-| max_iterations | 候補数 | 所要時間の目安（3〜10 タスクのデータセット） |
-|---:|---:|---|
-| 4（ドキュメント上の既定値） | 4 | 5〜10 分 |
-| 5 | 5 | 10〜15 分 |
-| 10 | 10 | 20〜30 分 |
+| --max-candidates | 所要時間 |
+|---:|---|
+| 1 | 約 10 分 |
+| 5（既定） | 約 35 分 |
 
-筆者の環境（15 タスクのデータセット + `gpt-5.4-mini` ジャッジ）では、1 回の最適化実行に約 34 分かかりました。
+所要時間はデータセット件数と候補数にほぼ比例します。
 
 <figure>
   <img src="images/Optimization_Result.png" alt="Optimization_Result" width="600" />
@@ -321,25 +397,36 @@ Results:
 
 ### コマンド
 
-```powershell
-azd ai agent optimize apply --candidate cand_c923c81a39eb4c6fba5768ede48e3eab
-azd deploy
+```bash
+azd ai agent optimize apply --candidate cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0001
+azd deploy travel-approval-agent --no-prompt
 ```
 
-`apply` は勝者候補の構成をローカルの `.agent_configs/<candidate-id>/` に書き出し、デプロイされるコンテナがそれを読み込むよう `agent.yaml` を更新します。
+`apply` は勝者候補の構成をローカルの `.agent_configs/<candidate-id>/` に書き出し、デプロイされるコンテナがそれを読み込むよう **`azure.yaml` を更新**します。実行すると指示文の差分（ベースライン → 最適化後）も表示されます。
 
-### `apply` が `agent.yaml` に行う変更
+```text
+  Fetching candidate config...
+  → src/travel-approval-agent/.agent_configs/cand_opt_..._0001/metadata.yaml
+  Updating agent definition in azure.yaml...
 
-適用された候補は、`environment_variables` に追加される 2 つの環境変数によって実行時に選択されます:
+  ✓ Candidate cand_opt_..._0001 applied to .agent_configs/cand_opt_..._0001
+
+  Instruction diff (baseline → optimized):
+    — Baseline (4 lines, 274 chars):
+    — Optimized (61 lines, 4249 chars):
+```
+
+### `apply` が `azure.yaml` に行う変更
+
+エージェントのサービスブロックに `env:` マップが書き込まれ、そこに `OPTIMIZATION_CANDIDATE_ID` が入ります。既存の `environmentVariables:`（リスト形式）は `env:`（マップ形式）に変換されます。
 
 ```yaml
-environment_variables:
-    - name: AZURE_AI_MODEL_DEPLOYMENT_NAME
-      value: gpt-5.4-mini
-    - name: OPTIMIZATION_LOCAL_DIR
-      value: .agent_configs
-    - name: OPTIMIZATION_CANDIDATE_ID            # ← エージェントが読む構成を決める
-      value: cand_c923c81a39eb4c6fba5768ede48e3eab
+services:
+    travel-approval-agent:
+        env:
+            AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+            OPTIMIZATION_LOCAL_DIR: .agent_configs
+            OPTIMIZATION_CANDIDATE_ID: cand_opt_..._0001   # ← エージェントが読む構成を決める
 ```
 
 実行時、`load_config()` は次の優先順位で解決します（[Python SDK README](https://learn.microsoft.com/python/api/overview/azure/ai-agentserver-optimization-readme?view=azure-python-preview#key-concepts)）:
@@ -350,20 +437,21 @@ environment_variables:
 | 2 | リゾルバー API（`OPTIMIZATION_CANDIDATE_ID` + `OPTIMIZATION_RESOLVE_ENDPOINT`） | 最適化の途中 |
 | 3 | ローカルディレクトリ → `<config_dir>/<candidate_id>/` または `baseline/` | 通常のデプロイ時 |
 
-つまり `azd deploy` は `OPTIMIZATION_CANDIDATE_ID` が設定された状態でコンテナを出荷するので、`baseline/` ではなく `.agent_configs/<candidate-id>/metadata.yaml` を読みます。ベースラインに戻すには、`agent.yaml` から **`OPTIMIZATION_CANDIDATE_ID` 環境変数を削除**します。
+つまり `azd deploy` は `OPTIMIZATION_CANDIDATE_ID` が設定された状態でコンテナを出荷するので、`baseline/` ではなく `.agent_configs/<candidate-id>/metadata.yaml` を読みます。ベースラインに戻すには、**`azure.yaml` の `env:` から `OPTIMIZATION_CANDIDATE_ID` を削除**して再デプロイします。
 
-### デプロイ出力
+デプロイ後、`azd ai agent show --output json` の `definition.environment_variables` に候補 ID が入っていることを確認できます。
 
-```text
-  Service                  Status        Duration
-  ───────────────────────  ────────────  ──────────
-  ● travel-approval-agent  Done          3m35s
-- Agent playground (portal): https://ai.azure.com/...?version=15
-- Agent endpoint (responses): https://aifproject10.services.ai.azure.com/...
-SUCCESS: Your application was deployed to Azure in 3 minutes 51 seconds.
+```json
+{
+  "AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-5.4-mini",
+  "OPTIMIZATION_CANDIDATE_ID": "cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0001",
+  "OPTIMIZATION_LOCAL_DIR": ".agent_configs"
+}
 ```
 
-`apply` + `deploy` を行うたびにエージェントのバージョンが上がります（ここでは v15）。
+`apply` + `deploy` を行うたびにエージェントのバージョンが上がります（ここでは v5 → v6）。デプロイ所要時間は実測 1m30s でした。
+
+> ローカルに適用せず、候補をそのまま新バージョンとして発行する `azd ai agent optimize deploy --candidate <id>` もあります。ただし `.agent_configs/` がローカルに残らないため、ワークショップでは `apply` + `azd deploy` を推奨します。
 
 ---
 
@@ -373,27 +461,34 @@ SUCCESS: Your application was deployed to Azure in 3 minutes 51 seconds.
 
 ### コマンド
 
-```powershell
+```bash
 azd ai agent eval run
 ```
+
+同じスイート（同じ `eval_*` ID）を再利用し、`agent.version` だけが新しいバージョンに書き換わります。
 
 ### 出力例
 
 ```text
-  warning: agent version in eval.yaml ("3") differs from environment ("15")
-           — using environment value
   Updated eval.yaml with current environment values
-? Found existing eval eval_9b61f1cf5838401d98226c21df36a5c5. Reuse it?: Yes
+Eval run started
+   Eval: eval_5162dae33dd248eea2563c3f0f09b952
+   Run:  evalrun_ca861f5bad74422fa705e58e4064c1a8
+  (✓) Done  Eval run  (2m 35s)
 
-  (✓) Done  Eval run  (1m 39s)
+Name:       smoke-core
+Status:     Completed
+Agent:      travel-approval-agent v6
 
-Agent:      travel-approval-agent v15
-Results:    15 total, 10 passed, 5 failed, 0 errored
+Results:    15 total, 11 passed, 4 failed, 0 errored
+
+Per-criteria results:
+  smoke-core: 11 passed, 4 failed, 0 errored
 ```
 
-**合格率: 10/15 (67%)、ベースラインは 7/15 (47%)** — デプロイ済みエージェント上で +20 ポイントの改善を確認できました。
+**合格率: 11/15 (73%)、ベースラインは 7/15 (47%)** — デプロイ済みエージェント上で +26 ポイントの改善を確認できました。指示チューニング（`system_prompt` 戦略）だけでこの差が出ています。
 
-> 注: 筆者のサイクルでは、この再評価の前に候補の `metadata.yaml` を**手動で編集**し、`model` を `gpt-4.1-mini` から `gpt-5.4-mini` に切り替えています。この編集がなければ、測っているのは指示チューニング単体の効果であり、指示 + モデルの効果ではありません。
+> オプティマイザーが報告したスコア（0.391 → 0.529）と、この合格率（47% → 73%）は別の指標です。前者はルーブリックの加重平均、後者はタスク単位の二値判定です。方向が一致していれば改善は本物と考えてよいでしょう。
 
 ---
 
@@ -401,29 +496,24 @@ Results:    15 total, 10 passed, 5 failed, 0 errored
 
 勝者候補が（`apply` + `deploy` によって）アクティブなベースラインになったら、さらに上を目指してもう一周最適化を回せます:
 
-```powershell
-azd ai agent optimize
+```bash
+azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 5
 ```
 
-### 筆者のサイクルにおける 2 周目の結果
+### 2 周目の見方（過去の実行例）
 
 ```text
-  Job ID: opt_012bc834ce594b55a38e8eaca94f3545
-  ⠹ completed · iteration 5 · score: 0.56 · 36m50s
-
 Results:
-  Candidate              Score    Pass  Eval
-  ──────────────────── ─────── ───────  ──────
-  baseline                0.51     53%  View
-  candidate_1             0.48     43%  View
-  candidate_2             0.51     40%  View
-  candidate_3             0.43     40%  View
-  candidate_4 ★           0.56     40%  View
+  Candidate               Score  Eval  Strategy
+  ──────────────────── ────────  ────  ────────
+  baseline                0.51    View  -
+  candidate_1             0.48    View  system_prompt
+  candidate_4 ★           0.56    View  system_prompt
 ```
 
-- **新しいベースラインは 0.51 からスタート**します（前回の勝者がベースラインになるため）。
-- 収益逓減: 今回は **+0.05**、前回は +0.10 でした。それでも Learn の基準では「中程度、デプロイする価値あり」の範囲です。
-- **合格率とスコアは乖離し得る**点に注意してください（candidate_4 はスコアでは勝っていますが、合格率はベースラインを下回っています）。合格率はタスクごとの二値判定、スコアはルーブリックの加重平均です。両者が食い違う場合は、ポータルでディメンション別スコアを確認してください。
+- **新しいベースラインは前回の勝者スコアからスタート**します。
+- 収益逓減が起きます。改善幅が 0.03 を下回ったらノイズと判断して打ち切ってください。
+- **合格率とスコアは乖離し得ます**。スコアはルーブリックの加重平均、合格率はタスク単位の二値判定です。食い違う場合はポータルでディメンション別スコアを確認してください。
 
 ---
 
@@ -431,14 +521,15 @@ Results:
 
 | ファイル | 役割 |
 |---|---|
-| `azure.yaml` | `azd` のサービス定義（プロジェクトルート） |
-| `src/<agent>/agent.yaml` | ホステッドエージェントのコンテナ仕様 + 環境変数（`OPTIMIZATION_CANDIDATE_ID` の場所） |
+| `azure.yaml` | `azd` のサービス定義 + エージェントの環境変数（`OPTIMIZATION_CANDIDATE_ID` の場所） |
 | `src/<agent>/eval.yaml` | 評価・最適化のレシピ |
 | `src/<agent>/main.py` | `azure.ai.agentserver.optimization` の `load_config()` を呼び出す |
 | `src/<agent>/.agent_configs/baseline/` | オプティマイザーが比較対象とするベースライン構成 |
 | `src/<agent>/.agent_configs/<cand_id>/` | 適用した候補のローカルコピー |
 | `src/<agent>/datasets/<suite>/` | 生成された合成データセット (JSONL) |
 | `src/<agent>/evaluators/<suite>/rubric_dimensions.json` | 編集可能なルーブリック定義 |
+
+旧バージョンの拡張が使っていた `src/<agent>/agent.yaml` は、現在のフローでは参照されません。エージェント定義は `azure.yaml` のサービスブロックに一本化されています。
 
 ### 覚えておきたい `azd env` の値
 
@@ -455,30 +546,29 @@ Results:
 
 ### デプロイ・環境
 
-1. **`azure.yaml` の deployment と `agent.yaml` の環境変数の不一致。** `azure.yaml` の `deployments` ブロックは `azd provision` が*作成*するものを制御するだけです。実行時に*呼び出す*先を制御するのは `agent.yaml` の `AZURE_AI_MODEL_DEPLOYMENT_NAME` です。両者を揃えておかないと、存在しないデプロイを呼び出すことになります。
-2. **`OPTIMIZATION_CANDIDATE_ID` がデプロイの振る舞いを決めます。** 設定されている間、`azd deploy` は候補構成を出荷します。コメントアウトすれば、再度 apply することなくベースラインにロールバックできます。
+1. **`ai-project` の deployment とエージェントの環境変数の不一致。** `services.ai-project.deployments` は `azd provision` が*作成*するものを制御するだけです。実行時に*呼び出す*先を制御するのはエージェントサービスの `AZURE_AI_MODEL_DEPLOYMENT_NAME` です。両者を揃えておかないと、存在しないデプロイを呼び出すことになります。
+2. **`OPTIMIZATION_CANDIDATE_ID` がデプロイの振る舞いを決めます。** `azure.yaml` の `env:` に設定されている間、`azd deploy` は候補構成を出荷します。削除すれば、再度 apply することなくベースラインにロールバックできます。
 
 ### 最適化の設定
 
-3. **`max_iterations` の既定値は 5**（SDK 基準）。Learn のドキュメントの表には「4（既定）」とも記載されていますが、API 側の既定値は 5 と考えてください。
-4. **`optimization_model` は必須**で、**gpt-5 ファミリー**（`gpt-5`、`gpt-5.1`、`gpt-5.3`。オプティマイザーのクイックスタートでは `gpt-5.4` が掲載）から選ぶ必要があります。mini 系はリフレクションモデルとしては*サポート外*です。
-5. **評価モデルのサイレント障害。** 評価モデルのデプロイがないと、エラーなしで全スコアが 0 になります。実行前に必ずポータルで確認してください。
-6. **評価中にツールが実際に呼ばれます。** ツールが状態を変更する・呼び出しごとに課金される場合は、モック化するかテスト用エンドポイントに向けてください。
+3. **`--optimize-model` は必須です。** 省略すると対話プロンプトにはならず、`invalid config: options.optimization_model is required` で即死します。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
+4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` しか入っていません。`optimization_model` や `optimization_config.model` は自分で追記するか、フラグで渡します。
+5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めると安いです。
+6. **リフレクションモデルは gpt-5 ファミリー**を選びます。mini 系はサポート外です。
+7. **評価モデルのサイレント障害。** 評価モデルのデプロイがないと、エラーなしで全スコアが 0 になります。実行前に必ずポータルで確認してください。
+8. **評価中にツールが実際に呼ばれます。** ツールが状態を変更する・呼び出しごとに課金される場合は、モック化するかテスト用エンドポイントに向けてください。
+9. **候補はドラフトバージョンです。** 最適化中に作られる候補は、`apply` + `deploy`（または `optimize deploy`）するまで稼働中のバージョンに影響しません。
 
 ### 結果の読み取り
 
-7. **モデル選択はポータルで確認する。** CLI の結果表には各候補が使ったモデルが表示されません。ポータルの **Optimize タブ**にスコア vs トークンのチャートと候補別モデルがあります。
-8. **`apply` は勝者しかローカルに書きません。** 他の候補はサービス側にしか存在せず、`.agent_configs/` を見ても確認できません。
-9. **スコアと合格率は乖離し得ます。** スコアはルーブリックの加重平均、合格率はタスク単位の二値判定です。食い違う場合はディメンション別の内訳を見てください。
-
-### 「モデル」最適化について
-
-10. （この項目は現在書き直し中です）
+10. **`Strategy` 列で生成元のターゲットが分かります。** `system_prompt` なら指示チューニング由来です。候補別のモデルやスコア vs トークンのチャートはポータルの **Optimize タブ**にあります。
+11. **`apply` は指定した候補しかローカルに書きません。** 他の候補はサービス側にしか存在せず、`.agent_configs/` を見ても確認できません。
+12. **オプティマイザーのスコアと `eval run` の合格率は別指標です。** スコアはルーブリックの加重平均、合格率はタスク単位の二値判定です。食い違う場合はディメンション別の内訳を見てください。
 
 ### ルーブリックのディメンション
 
-11. **7 つのディメンションは固定のカタログではありません。** うち 6 つは `instructions.md` から LLM が生成したもので、`general_quality`（残差項、`always_applicable: true`）だけが編集不可で注入されます。指示文を編集して `eval init` を再実行すると、異なるセットが生成されます。
-12. **ディメンションをローカルで編集したら再登録。** `rubric_dimensions.json` を編集 → `azd ai agent eval update` → 再実行。
+13. **7 つのディメンションは固定のカタログではありません。** うち 6 つは `instructions.md` から LLM が生成したもので、`general_quality`（残差項、`always_applicable: true`）だけが編集不可で注入されます。`eval generate` を再実行すると名前も重みも変わります。
+14. **ディメンションをローカルで編集したら再登録。** `rubric_dimensions.json` を編集 → `azd ai agent eval update` → 再実行。
 
 ---
 
@@ -486,10 +576,10 @@ Results:
 
 ```mermaid
 flowchart TD
-    A["azd ai agent eval init<br/>データセット + ルーブリックを生成<br/><i>初回のみ</i>"] --> B
-    B["azd ai agent eval run<br/>デプロイ済みエージェントのベースラインスコア"] --> C
-    C["azd ai agent optimize<br/>候補を生成してランク付け<br/><i>15 サンプルで約 30 分</i>"] --> D
-    D["azd ai agent optimize apply --candidate &lt;id&gt;<br/>azd deploy<br/>勝者を出荷<br/><i>約 3～4 分</i>"] --> E
+    A["azd ai agent eval generate<br/>データセット + ルーブリックを生成<br/><i>初回のみ</i>"] --> B
+    B["azd ai agent eval run<br/>デプロイ済みエージェントのベースラインスコア<br/><i>約 2 分</i>"] --> C
+    C["azd ai agent optimize --optimize-model gpt-5.4<br/>候補を生成してランク付け<br/><i>15 サンプル・候補 5 で約 35 分</i>"] --> D
+    D["azd ai agent optimize apply --candidate &lt;id&gt;<br/>azd deploy<br/>勝者を出荷<br/><i>約 2 分</i>"] --> E
     E["azd ai agent eval run<br/>デプロイ済みエージェントで改善を確認"] --> F{"改善幅<br/>>= 0.03？"}
     F -- はい --> C
     F -- いいえ --> G(["終了 - 収益逓減"])

@@ -2,30 +2,41 @@
 
 requiredVersions:
     extensions:
-        azure.ai.agents: '>=0.1.0-preview'
+        azure.ai.agents: '>=1.0.0-beta.4'
 name: ai-foundry-starter-basic
 services:
+    ai-project:
+        host: azure.ai.project
+        deployments:
+            - model:
+                format: OpenAI
+                name: gpt-5.4-mini
+                version: "2026-03-17"
+              name: gpt-5.4-mini
+              sku:
+                capacity: 1000
+                name: GlobalStandard
     travel-approval-agent:
         project: src/travel-approval-agent
         host: azure.ai.agent
-        language: docker
-        docker:
-            remoteBuild: true
-        config:
-            container:
-                resources:
-                    cpu: "0.5"
-                    memory: 1Gi
-            deployments:
-                - model:
-                    format: OpenAI
-                    name: gpt-5.4-mini
-                    version: "2025-04-14"
-                  name: gpt-5.4-mini
-                  sku:
-                    capacity: 2000
-                    name: GlobalStandard
-            startupCommand: python main.py
+        language: python
+        env:
+            AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
+            OPTIMIZATION_CANDIDATE_ID: cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0001
+            OPTIMIZATION_LOCAL_DIR: .agent_configs
+        codeConfiguration:
+            dependencyResolution: remote_build
+            entryPoint: main.py
+            runtime: python_3_13
+        container:
+            resources:
+                cpu: "0.5"
+                memory: 1Gi
+        description: Applies the Contoso travel policy to trip requests and returns an approval decision.
+        kind: hosted
+        name: travel-approval-agent
+        protocols:
+            - protocol: responses
+              version: 2.0.0
 infra:
-    provider: bicep
-    path: ./infra
+    provider: microsoft.foundry
