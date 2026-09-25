@@ -2,6 +2,7 @@
 
 `azd` で管理するホステッドエージェントに対する、エンドツーエンドの最適化サイクルの解説です。`travel-approval-agent` サンプルの実際の実行結果をもとにまとめています。ご自身のエージェントに対して最適化を実行する際の出発点テンプレートとしてご利用ください。
 
+> **実行例とスクリーンショットについて**: 本文の CLI 出力と画像は、同一の実行を記録したものではありません。画像は過去の `proj-default` プロジェクトの画面例であり、本リポジトリを新規デプロイした結果の証明ではありません。評価器名、エージェントのバージョン、モデル、スコアは各実行で異なります。再現確認では、自分の実行 ID と同じデータセット・評価器のバージョンを使って比較してください。
 
 ---
 
@@ -61,7 +62,7 @@ pip install azure-ai-agentserver-optimization
 
 1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト（`azd ai agent invoke "test"` で確認できます）。
 2. プロジェクト内の 2 つのモデルデプロイ:
-   - **評価モデル**（例: `gpt-5.6-sol`）— 応答を採点するジャッジ。Chat completion modelであること。
+   - **評価モデル**（本リポジトリでは `gpt-5.4-mini`）— 応答を採点するジャッジ。Chat completion modelであること。
    - **最適化モデル**（「リフレクション」モデル）— サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro` 、`DeepSeek-V-3.2`  から選択。候補構成を生成します。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
 
@@ -148,7 +149,7 @@ azd ai agent show --output json     # "status": "active" を確認
 azd ai agent invoke "3日間の東京出張を申請します。航空券とホテルで合計 2,800 ドルです。承認できますか？"
 ```
 
-ポリシー参照・部門予算の確認・代替案の提示が応答に含まれていれば、3 つのツールがすべて動作しています。失敗した場合は `azd ai agent monitor --tail 120` でコンテナログを確認します。
+応答が出張申請に沿っていることを確認し、`azd ai agent monitor --tail 120` のコンテナログで実際のツール呼び出しも確認します。ポリシー・予算・代替案への言及だけでは、3 つのツールが実行された証拠にはなりません。申請に不足情報がある場合は、ツール呼び出しより先に追加情報を求めることもあります。
 
 ---
 
@@ -230,14 +231,20 @@ Eval suite created
 | 成果物 | 場所 |
 |---|---|
 | `eval.yaml` | `src/<agent>/eval.yaml`（実行可能なレシピ） |
-| 合成データセット (JSONL) | `src/<agent>/datasets/<suite-name>/<suite-name>_dg.jsonl` |
+| 合成データセット | Foundry の `<suite-name>` / `<version>`。ローカルにも取得された場合は `src/<agent>/datasets/<suite-name>/<suite-name>_dg.jsonl` |
 | ルーブリック（ディメンション JSON） | `src/<agent>/evaluators/<suite-name>/rubric_dimensions.json` |
 
 データセットと評価器は Foundry プロジェクトにも登録され、実行の最後にポータルの URL が表示されます。
 
+> **ローカルファイルは実在を確認してください**: `azure.ai.agents` 1.0.0-beta.17 での再検証では、生成完了の表示にデータセットのローカルパスが出ても、JSONL は保存されず、`eval.yaml` には `dataset.name` と `dataset.version` だけが入りました。この状態でも登録済みデータセットを使った評価・最適化は実行できます。ローカル編集やオフライン利用をする場合は、先にデータセットを取得し、ファイルが存在することを確認してください。
+
+<figure>
+  <img src="images/eval_catalogs.png" alt="過去のプロジェクトの Evaluator catalog 一覧" width="600" />
+  <figcaption><em>評価器カタログの画面例。選択されている評価器名は eval-dataset-travel-approval-agent で、本文の smoke-core とは異なります。</em></figcaption>
+</figure>
 <figure>
   <img src="images/Rubric_evaluator.png" alt="Rubric_evaluator" width="600" />
-  <figcaption><em>評価器カタログ内のルーブリック評価器</em></figcaption>
+  <figcaption><em>同評価器の詳細画面。ルーブリック型、全体スコア [0–1]、ディメンションスコア [1–5] を確認する例です。ディメンション名・重みは本文の生成例とは一致しません。</em></figcaption>
 </figure>
 
 
@@ -252,7 +259,6 @@ agent:
 dataset:
     name: smoke-core
     version: "1.0"
-    local_uri: datasets/smoke-core
 evaluators:
     - name: smoke-core
       version: "1"
@@ -262,6 +268,7 @@ options:
 max_samples: 15
 ```
 
+ローカルデータセットを使用する場合は、取得済みのパスを `dataset.local_uri` に指定します。
 
 ### ルーブリックのディメンション
 
@@ -309,13 +316,13 @@ Per-criteria results:
   smoke-core: 7 passed, 8 failed, 0 errored
 ```
 
-**ベースラインの合格率: 7/15 (47%)** — これが最適化で改善すべき出発点です。
+**この実行例のベースライン合格率: 7/15 (47%)** — 実際には自分の実行結果を最適化前の比較基準にします。同じコマンドでも、この合格数になるとは限りません。
 
 タスク別・ディメンション別のスコアを掛け合わせて見るには、Foundry ポータルで **Report** の URL を開いてください。過去の実行は `azd ai agent eval list` / `azd ai agent eval show` でも確認できます。
 
 <figure>
   <img src="images/Rubric_score.png" alt="Rubric_score" width="600" />
-  <figcaption><em>データセット 1 レコードのルーブリックスコア</em></figcaption>
+  <figcaption><em>過去の評価における 1 レコード（Index_3）のルーブリックスコア 0.82。データセット全体の平均スコアや合格率ではありません。画像は全ディメンションを表示していないため、集計値の再計算には元の評価 JSON が必要です。</em></figcaption>
 </figure>
 
 ---
@@ -365,7 +372,7 @@ options:
 > Your live agent versions are not affected until you explicitly deploy a candidate.
 > ```
 
-### 実行結果
+### 過去の実行結果（候補 1 件）
 
 ```text
   Total time: 9m58s
@@ -406,11 +413,11 @@ Results:
 
 <figure>
   <img src="images/Optimization_Result.png" alt="Optimization_Result" width="600" />
-  <figcaption><em>最適化結果</em></figcaption>
+  <figcaption><em>CLI 出力とは別の実行（opt_ecfa4402fce04bfe9afb87fde9aa0f5c）の結果。スコア 0.468 → 0.571（差 +0.103、相対改善約 22%）、合格数 4/15 → 8/15、所要時間 34m18s。画像の合格数は最適化中の評価であり、Step 5 のデプロイ後の再評価結果ではありません。</em></figcaption>
 </figure>
 <figure>
   <img src="images/Optimization_Candidate.png" alt="Optimization_Candidate" width="600" />
-  <figcaption><em>最適化候補 1</em></figcaption>
+  <figcaption><em>候補とベースラインの指示文の比較例。画像中の model は gpt-4.1-mini、agentVersion は 3 です。現在の azure.yaml がデプロイする gpt-5.4-mini や本文のバージョンとは異なります。</em></figcaption>
 </figure>
 
 > **警告 — ツールは実際に呼ばれます**: 最適化中、データセットの全タスクがデプロイ済みエージェントを呼び出し、ツールが実際に実行されます。ツールが外部 API やデータベースを叩いたり状態を変更したりする場合は、最適化前にテスト用エンドポイントやモック実装に向けてください。
@@ -514,9 +521,9 @@ Per-criteria results:
   smoke-core: 11 passed, 4 failed, 0 errored
 ```
 
-**合格率: 11/15 (73%)、ベースラインは 7/15 (47%)** — デプロイ済みエージェント上で +26 ポイントの改善を確認できました。指示チューニング（`system_prompt` 戦略）だけでこの差が出ています。
+**この実行例の合格率: 11/15 (73%)、ベースラインは 7/15 (47%)** — デプロイ済みエージェント上で約 +26.7 ポイントの差が出た例です。最適化による改善を保証するものではありません。
 
-> オプティマイザーが報告したスコア（0.391 → 0.529）と、この合格率（47% → 73%）は別の指標です。前者はルーブリックの加重平均、後者はタスク単位の二値判定です。方向が一致していれば改善は本物と考えてよいでしょう。
+> オプティマイザーが報告したスコア（0.391 → 0.529）と、この合格率（47% → 73%）は別の指標です。前者はルーブリックの加重平均、後者はタスク単位の二値判定です。方向の一致だけでは改善を断定できません。同じ評価条件での再実行や、最適化に使っていない検証データでも確認してください。
 
 ---
 
@@ -567,6 +574,23 @@ Results:
 | `AGENT_<NAME>_VERSION` | アクティブなバージョン（`apply` + `deploy` のたびに増加） |
 | `FOUNDRY_PROJECT_ENDPOINT` | 解決済みのプロジェクトエンドポイント URL |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | `main.py` のフォールバック用モデルデプロイ |
+
+### 再検証記録（2026-09-25）
+
+`main` の `4d758d5` を隔離コピーし、eastus2 の新規 Sandbox で実行しました。azd 1.34.2 / `azure.ai.agents` 1.0.0-beta.17、15 件の新規データセット、評価モデル `gpt-5.4-mini`、最適化モデル `gpt-5.4`、`--max-candidates 1` の結果です。
+
+| 検証 | 結果 |
+|---|---|
+| ローカル | 構成読み込み・異常系・3 ツール等の 7 テスト成功、実サーバーの `/readiness` は HTTP 200 |
+| 新規プロビジョニング / コードデプロイ / 呼び出し | 成功。ベースラインの 3 ツールの成功ログも確認 |
+| デプロイ済みベースライン v1 の評価 | 6/15 合格、実行エラー 0 |
+| 最適化 | スコア 0.465 → 0.602、candidate_1 が最良。所要時間 9m54s |
+| 候補適用 / デプロイ v2 / 同一スイートの再評価 | 候補フォルダーの読み込みをログで確認。11/15 合格、実行エラー 0 |
+| ロールバック v3 / 後片付け | baseline の読み込みと応答を確認後、Sandbox を削除・purge。リソースグループ、論理削除アカウント、対象のロール割り当て・デプロイ履歴の残存なし |
+
+この結果も改善の保証ではありません。最適化内のベースライン採点と、デプロイ済み v1 の評価は別の実行です。画像はこの再検証で撮影したものではありません。
+
+> 検証機の Windows では `AzureCLICredential` / `AzureDeveloperCLICredential` のタイムアウトが断続的に発生しました。ローカルプロセスだけで `PYTHONDONTWRITEBYTECODE=1` を設定し、必要なトークンを更新して再試行しました。これは認証エラー一般の解決策ではありません。また、SDK の任意の A365 OpenAI Agents 計測処理から `ModuleNotFoundError: No module named 'agents'` の警告が出ましたが、エージェントの応答・評価は完了しました。これを解消するためだけに、使用していない別のエージェント SDK は追加していません。
 
 ---
 
