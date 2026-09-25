@@ -236,8 +236,6 @@ Eval suite created
 
 データセットと評価器は Foundry プロジェクトにも登録され、実行の最後にポータルの URL が表示されます。
 
-> **ローカルファイルは実在を確認してください**: `azure.ai.agents` 1.0.0-beta.17 での再検証では、生成完了の表示にデータセットのローカルパスが出ても、JSONL は保存されず、`eval.yaml` には `dataset.name` と `dataset.version` だけが入りました。この状態でも登録済みデータセットを使った評価・最適化は実行できます。ローカル編集やオフライン利用をする場合は、先にデータセットを取得し、ファイルが存在することを確認してください。
-
 <figure>
   <img src="images/eval_catalogs.png" alt="過去のプロジェクトの Evaluator catalog 一覧" width="600" />
   <figcaption><em>評価器カタログの画面例。選択されている評価器名は eval-dataset-travel-approval-agent で、本文の smoke-core とは異なります。</em></figcaption>
@@ -574,23 +572,6 @@ Results:
 | `AGENT_<NAME>_VERSION` | アクティブなバージョン（`apply` + `deploy` のたびに増加） |
 | `FOUNDRY_PROJECT_ENDPOINT` | 解決済みのプロジェクトエンドポイント URL |
 | `AZURE_AI_MODEL_DEPLOYMENT_NAME` | `main.py` のフォールバック用モデルデプロイ |
-
-### 再検証記録（2026-09-25）
-
-`main` の `4d758d5` を隔離コピーし、eastus2 の新規 Sandbox で実行しました。azd 1.34.2 / `azure.ai.agents` 1.0.0-beta.17、15 件の新規データセット、評価モデル `gpt-5.4-mini`、最適化モデル `gpt-5.4`、`--max-candidates 1` の結果です。
-
-| 検証 | 結果 |
-|---|---|
-| ローカル | 構成読み込み・異常系・3 ツール等の 7 テスト成功、実サーバーの `/readiness` は HTTP 200 |
-| 新規プロビジョニング / コードデプロイ / 呼び出し | 成功。ベースラインの 3 ツールの成功ログも確認 |
-| デプロイ済みベースライン v1 の評価 | 6/15 合格、実行エラー 0 |
-| 最適化 | スコア 0.465 → 0.602、candidate_1 が最良。所要時間 9m54s |
-| 候補適用 / デプロイ v2 / 同一スイートの再評価 | 候補フォルダーの読み込みをログで確認。11/15 合格、実行エラー 0 |
-| ロールバック v3 / 後片付け | baseline の読み込みと応答を確認後、Sandbox を削除・purge。リソースグループ、論理削除アカウント、対象のロール割り当て・デプロイ履歴の残存なし |
-
-この結果も改善の保証ではありません。最適化内のベースライン採点と、デプロイ済み v1 の評価は別の実行です。画像はこの再検証で撮影したものではありません。
-
-> 検証機の Windows では `AzureCLICredential` / `AzureDeveloperCLICredential` のタイムアウトが断続的に発生しました。ローカルプロセスだけで `PYTHONDONTWRITEBYTECODE=1` を設定し、必要なトークンを更新して再試行しました。これは認証エラー一般の解決策ではありません。また、SDK の任意の A365 OpenAI Agents 計測処理から `ModuleNotFoundError: No module named 'agents'` の警告が出ましたが、エージェントの応答・評価は完了しました。これを解消するためだけに、使用していない別のエージェント SDK は追加していません。
 
 ---
 
