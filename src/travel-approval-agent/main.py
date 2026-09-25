@@ -54,6 +54,12 @@ def get_flight_alternatives(
 def main():
     # Load optimization config from .agent_configs/
     config = load_config()
+    if config is None:
+        raise RuntimeError(
+            "No optimization config found. Ensure .agent_configs/baseline/ exists "
+            "next to main.py, or that OPTIMIZATION_LOCAL_DIR points to an existing "
+            "directory (relative paths resolve from main.py's folder)."
+        )
 
     # Load skills from local directory if not provided by optimization
     if not config.skills and config.skills_dir:
