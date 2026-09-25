@@ -44,12 +44,18 @@
 ## 2. 前提条件
 
 ```bash
-# `azd ai agent ...` コマンドを追加する azd CLI 拡張機能をインストール
+# azd 本体を最新化（古い azd では azure.ai.agents 拡張が "Incompatible" になり動作しません）
+winget upgrade Microsoft.Azd        # macOS/Linux は https://aka.ms/azd-install を参照
+
+# `azd ai agent ...` コマンドを追加する azd CLI 拡張機能をインストール（導入済みなら更新）
 azd ext install azure.ai.agents
+azd ext upgrade --all
 
 # エージェントのソースフォルダーで、ランタイム構成ローダーをインストール
 pip install azure-ai-agentserver-optimization
 ```
+
+> `azd ext list --installed` の `STATUS` が `Incompatible` の場合は、azd 本体のバージョンが拡張機能の要求を満たしていません。azd 1.28.1 + `azure.ai.agents` 1.0.0-beta.7 の組み合わせで確認済みです。azd 1.34.2 + 1.0.0-beta.17 に更新すると解消します。
 
 必要なもの:
 
@@ -106,7 +112,25 @@ azd env set AZURE_RESOURCE_GROUP "<rg>"
 
 > `FOUNDRY_PROJECT_ENDPOINT` を設定しないと `azd ai ...` 系コマンドがプロジェクトを解決できません。
 
-Foundry プロジェクトごと新規に作る場合は、上記の代わりに `azd provision` を実行します。
+Foundry プロジェクトごと新規に作る場合は、上記の `azd env set` の代わりに次を実行します。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4-mini`（エージェント / 評価モデル）と `gpt-5.4`（最適化モデル）もデプロイされます。
+
+```bash
+azd env new <環境名> --subscription <sub> --location <region>   # 例: eastus2
+azd env set AZURE_RESOURCE_GROUP "<rg>"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
+azd provision --preview   # 作成されるリソースを事前確認（what-if）
+azd provision
+```
+
+> 旧版にあった `infra/*.bicep` は、現行の azd（1.34 系）では `uses the removed generic Connection provisioning contract` エラーで `azd provision` が失敗するため削除しました。接続が必要な場合は、`azure.yaml` に `host: azure.ai.connection` のサービスとして宣言します。
+
+> **権限 — `eval generate` が 401 になる場合**: 新規プロビジョニングでは、開発者に付与されるデータプレーンロールがプロジェクトスコープ（`Cognitive Services User`）だけになります。評価器の生成ジョブはアカウントの `/openai/v1/responses` を呼び出すため、`PermissionDenied ... lacks the required data action Microsoft.CognitiveServices/accounts/OpenAI/responses/write` で失敗します。Foundry アカウントのスコープで自分に **Foundry User**（旧名 Azure AI User）ロールを付与し、数分待ってから再実行してください。
+>
+> ```bash
+> az role assignment create --assignee-object-id $(az ad signed-in-user show --query id -o tsv) \
+>   --assignee-principal-type User --role "Foundry User" \
+>   --scope $(az cognitiveservices account show -g <rg> -n <account> --query id -o tsv)
+> ```
 
 #### 2. デプロイする
 
@@ -365,7 +389,7 @@ Results:
 
 - **ベースライン 0.391 → 勝者 0.529** = +0.14 → Learn の基準では「有意な改善」です。
 - `Strategy` 列に、その候補がどの最適化ターゲットで生成されたかが出ます（上の例は `system_prompt` = 指示チューニング）。
-- 勝者は**常に candidate_1 とは限りません**。必ず ★ を確認してください。
+- 勝者は**常に candidate_1 とは限りません**。必ず ★ を確認してください。候補数が少ないと、候補がどれもベースラインを下回り **`baseline ★`** になることもあります（`--max-candidates 1` での検証では baseline 0.467 / candidate_1 0.400 でした）。その場合は `apply` せずに、候補数を増やして再実行します。
 - **`Candidate IDs:` ブロックの ID を次のステップで使います。**
 - 候補別のモデルやスコア vs トークンのプロットを見るには、**Foundry ポータルの Optimize タブ**を使います。過去の実行は `azd ai agent optimize list` / `azd ai agent optimize status <id>` でも確認できます。
 
@@ -438,6 +462,10 @@ services:
 | 3 | ローカルディレクトリ → `<config_dir>/<candidate_id>/` または `baseline/` | 通常のデプロイ時 |
 
 つまり `azd deploy` は `OPTIMIZATION_CANDIDATE_ID` が設定された状態でコンテナを出荷するので、`baseline/` ではなく `.agent_configs/<candidate-id>/metadata.yaml` を読みます。ベースラインに戻すには、**`azure.yaml` の `env:` から `OPTIMIZATION_CANDIDATE_ID` を削除**して再デプロイします。
+
+> **注意 — 候補フォルダーが無いと黙ってベースラインで動きます**: `OPTIMIZATION_CANDIDATE_ID` が設定されていても、`.agent_configs/<candidate-id>/` が存在しない場合、`load_config()` はエラーを出さずに `baseline/` を読み込みます（ログは `Loaded optimization config from local directory: ...\baseline (candidate_id=cand_...)` になります）。`apply` で生成された候補フォルダーは `azure.yaml` の変更と**一緒にコミット**してください。候補フォルダーを含めずにリポジトリを共有・クローンすると、最適化前の構成がデプロイされます。
+>
+> また、`OPTIMIZATION_LOCAL_DIR` に相対パスを指定した場合、カレントディレクトリではなく**起動スクリプト（`main.py`）のあるフォルダー**を基準に解決されます。構成がひとつも見つからないと `load_config()` は `None` を返すため、本サンプルの `main.py` はその場合にわかりやすいエラーで起動を停止します。
 
 デプロイ後、`azd ai agent show --output json` の `definition.environment_variables` に候補 ID が入っていることを確認できます。
 
@@ -547,7 +575,7 @@ Results:
 ### デプロイ・環境
 
 1. **`ai-project` の deployment とエージェントの環境変数の不一致。** `services.ai-project.deployments` は `azd provision` が*作成*するものを制御するだけです。実行時に*呼び出す*先を制御するのはエージェントサービスの `AZURE_AI_MODEL_DEPLOYMENT_NAME` です。両者を揃えておかないと、存在しないデプロイを呼び出すことになります。
-2. **`OPTIMIZATION_CANDIDATE_ID` がデプロイの振る舞いを決めます。** `azure.yaml` の `env:` に設定されている間、`azd deploy` は候補構成を出荷します。削除すれば、再度 apply することなくベースラインにロールバックできます。
+2. **`OPTIMIZATION_CANDIDATE_ID` がデプロイの振る舞いを決めます。** `azure.yaml` の `env:` に設定されている間、`azd deploy` は候補構成を出荷します。削除すれば、再度 apply することなくベースラインにロールバックできます。本リポジトリの `azure.yaml` はベースライン状態（`OPTIMIZATION_CANDIDATE_ID` なし）で配布しています。対応する候補フォルダーが無い状態で ID だけを残すと、黙ってベースラインで動作します。
 
 ### 最適化の設定
 
