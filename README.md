@@ -2,6 +2,50 @@
 
 `azd` で管理するホステッドエージェントに対する、エンドツーエンドの最適化サイクルの解説です。`travel-approval-agent` サンプルの実際の実行結果をもとにまとめています。ご自身のエージェントに対して最適化を実行する際の出発点テンプレートとしてご利用ください。
 
+## このサンプルで体験できること
+
+題材は、架空の会社 **Contoso Ltd. の出張承認エージェント**です。出張申請に対して、旅費規程と部門予算を確認し、必要に応じて安い代替案を提示します。ツールは固定のサンプルデータを返す実装で、実際の出張申請・予約・予算更新は行いません。実装の概要は [エージェント側の README](src/travel-approval-agent/README.md) を参照してください。
+
+**ゴールは「最適化前の応答を評価し、改善候補を比較・デプロイして、改善が維持されたかを再評価できる状態にすること」です。** 合格率やスコアが必ず上がることを保証するものではありません。
+
+| 項目 | 始める前に知っておくこと |
+|---|---|
+| 対象読者 | ターミナルでコマンドを実行でき、Azure サブスクリプションを利用できる方。オプティマイザーは初めてでも構いません |
+| 所要時間 | 評価・最適化には数十分を見込んでください。最適化だけで候補 1 件は約 10 分、5 件は約 35 分の実測例があります。環境準備・初回デプロイ・評価の時間は別途必要です |
+| 費用 | Azure のモデル推論とホステッドエージェントの実行に利用料金が発生します。無料のローカル演習ではありません。候補数・データセット件数を増やすと呼び出しも増えます |
+| 安全な実行先 | 検証用プロジェクトを推奨します。自分の業務ツールに置き換える場合、評価中にも実行されるため、テスト用の接続先やモックを使ってください |
+
+### どこから読めばよいか
+
+| やりたいこと | 読み始める場所 |
+|---|---|
+| まず仕組みを理解したい | 下の全体図 → [1. エージェント最適化サイクルとは](#1-エージェント最適化サイクルとは) |
+| このサンプルを初めて動かしたい | [2. 前提条件](#2-前提条件)から順番に進み、デプロイ先は新規／既存のどちらか一方を選ぶ |
+| このサンプルをデプロイ・動作確認済みで、azd 環境も設定済み | [Step 1 — 評価スイートを生成する](#3-step-1--評価スイートを生成する) |
+
+### サイクル全体図
+
+```mermaid
+flowchart TD
+    P["準備<br/>環境を設定し、サンプルをデプロイ・動作確認"] --> A
+    A["azd ai agent eval generate<br/>データセット + ルーブリックを生成<br/><i>初回のみ</i>"] --> B
+    B["azd ai agent eval run<br/>デプロイ済みエージェントのベースラインを評価<br/><i>約 2 分</i>"] --> C
+    C["azd ai agent optimize --optimize-model gpt-5.4<br/>候補を生成してランク付け<br/><i>15 サンプル・候補 5 で約 35 分</i>"] --> H{"改善候補を<br/>採用する？"}
+    H -- はい --> D
+    H -- いいえ --> G(["終了、または設定を見直して再試行"])
+    D["azd ai agent optimize apply --candidate &lt;id&gt;<br/>azd deploy<br/>選んだ候補をデプロイ<br/><i>約 2 分</i>"] --> E
+    E["azd ai agent eval run<br/>デプロイ済みエージェントで改善を確認"] --> F{"結果を確認して<br/>さらに最適化する？"}
+    F -- はい --> C
+    F -- いいえ --> G
+
+    classDef cmd fill:#eef,stroke:#447,stroke-width:1px,color:#000;
+    classDef decision fill:#ffd,stroke:#aa4,stroke-width:1px,color:#000;
+    classDef done fill:#dfd,stroke:#484,stroke-width:1px,color:#000;
+    class P,A,B,C,D,E cmd;
+    class H,F decision;
+    class G done;
+```
+
 > **実行例とスクリーンショットについて**: 本文の CLI 出力と画像は、同一の実行を記録したものではありません。画像は過去の `proj-default` プロジェクトの画面例であり、本リポジトリを新規デプロイした結果の証明ではありません。評価器名、エージェントのバージョン、モデル、スコアは各実行で異なります。再現確認では、自分の実行 ID と同じデータセット・評価器のバージョンを使って比較してください。
 
 ---
@@ -44,27 +88,56 @@
 
 ## 2. 前提条件
 
-```bash
-# azd 本体を最新化（古い azd では azure.ai.agents 拡張が "Incompatible" になり動作しません）
-winget upgrade Microsoft.Azd        # macOS/Linux は https://aka.ms/azd-install を参照
+### 使用するツールとシェル
 
+本文の CLI コマンド例は **Bash 用**です。macOS/Linux では Bash、Windows では [Git for Windows](https://git-scm.com/install/windows) に含まれる **Git Bash** を使用してください。Windows の `winget` による更新コマンドだけは、別途 PowerShell で実行します。
+
+- **Git** — リポジトリの取得に使います（[インストール](https://git-scm.com/install/)）。
+- **Azure Developer CLI (`azd`)** — 未導入の場合は [インストール手順](https://aka.ms/azd-install) を参照してください。導入済みの場合も最新化してください。
+- **Azure CLI (`az`)** — 後述の権限エラー対処で使う場合に必要です（[インストール手順](https://learn.microsoft.com/cli/azure/install-azure-cli)）。`azd` とは別のツールです。
+
+Windows で導入済みの `azd` を更新する場合は、**PowerShell** で実行します（macOS/Linux は上記のインストール手順を参照）。
+
+```powershell
+winget upgrade Microsoft.Azd
+```
+
+以降は **Bash / Git Bash** で実行します。
+
+```bash
 # `azd ai agent ...` コマンドを追加する azd CLI 拡張機能をインストール（導入済みなら更新）
 azd ext install azure.ai.agents
 azd ext upgrade --all
+```
 
-# エージェントのソースフォルダーで、ランタイム構成ローダーをインストール
-pip install azure-ai-agentserver-optimization
+Windows の **Git Bash** では、使用するターミナルで次も実行してください。Azure リソース ID の `/subscriptions/...` が Windows のファイルパスに変換されることを防ぎます。
+
+```bash
+export MSYS_NO_PATHCONV=1
 ```
 
 > `azd ext list --installed` の `STATUS` が `Incompatible` の場合は、azd 本体のバージョンが拡張機能の要求を満たしていません。azd 1.34.2 に更新すると解消します。
 
-必要なもの:
+### リポジトリの取得と作業場所
 
-1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト。最適化サイクルはデプロイ済みのエージェントを呼び出して評価するため、Step 1 より前に必要です。未デプロイなら後述の「[エージェントをホステッドエージェントとしてデプロイする](#エージェントをホステッドエージェントとしてデプロイする)」で作成します（`azd ai agent invoke "test"` で確認できます）。
+```bash
+git clone https://github.com/tniita/optimization-travel-approval-agent.git
+cd optimization-travel-approval-agent
+```
+
+取得済みの場合は、そのフォルダーへ移動するだけで構いません。以降の `azd` コマンドは、**`azure.yaml` があるリポジトリルート**で実行します。`src/travel-approval-agent` へ移動したり、別のサンプルを `azd ai agent init` で初期化したりする必要はありません。
+
+`<環境名>`、`<sub>`（サブスクリプション ID）、`<region>`（リージョン）、`<rg>`（リソースグループ名）、`<account>`、`<project>` はプレースホルダーです。**山括弧も含めて自分の値に置き換えてから**実行してください。実行結果に含まれる評価・候補 ID も、自分の実行で得た値を使います。
+
+この手順は直接コードデプロイを使います。[requirements.txt](src/travel-approval-agent/requirements.txt) の依存関係は Azure 側のリモートビルドでインストールされるため、このデプロイ手順のためにローカルで `pip install` を行う必要はありません。実行環境は `azure.yaml` で Python 3.13 を指定しています。
+
+### Step 1 の開始までに揃えるもの
+
+1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト。最適化サイクルはデプロイ済みのエージェントを呼び出して評価するため、Step 1 より前に必要です。最初から用意されている必要はありません。未デプロイなら後述の「[エージェントをホステッドエージェントとしてデプロイする](#エージェントをホステッドエージェントとしてデプロイする)」で作成し、動作確認まで進めます。
 2. プロジェクト内の 2 つのモデルデプロイ（後述の `azd provision` でプロジェクトごと新規作成する場合は、`azure.yaml` の `ai-project.deployments` により両方とも作成されます。既存プロジェクトを使う場合は事前にデプロイしておきます）:
    - **評価モデル**（本リポジトリでは `gpt-5.4-mini`）— 応答を採点するジャッジ。Chat completion modelであること。
    - **最適化モデル**（「リフレクション」モデル）— サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro` 、`DeepSeek-V-3.2`  から選択。候補構成を生成します。
-3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
+3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。**本サンプルは対応済みです。** 自分のエージェントに適用する場合は、[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
 
 > **重要 — サイレント障害**: 評価モデルがプロジェクトにデプロイされていない場合、**エラーメッセージなしにすべてのスコアがゼロ**になります。実行前に必ず Foundry ポータルでデプロイを確認してください。
 
@@ -96,10 +169,40 @@ tools_file: tools.json
 
 #### 1. azd 環境を作成し、デプロイ先を指定する
 
-`azure.yaml` のあるリポジトリルートで実行します。
+`azure.yaml` のあるリポジトリルートで、まずサインインします。
 
 ```bash
 azd auth login
+```
+
+次に **A / B のどちらか一方だけ**を実行します。どちらのルートも、設定後は「[2. デプロイする](#2-デプロイする)」へ進みます。
+
+| 利用する環境 | 選ぶ手順 |
+|---|---|
+| 検証用の Foundry プロジェクトを新しく作りたい | [A. Foundry プロジェクトを新規作成する](#a-foundry-プロジェクトを新規作成する) |
+| 利用できる Foundry プロジェクトがすでにある | [B. 既存の Foundry プロジェクトを使う](#b-既存の-foundry-プロジェクトを使う) |
+
+##### A. Foundry プロジェクトを新規作成する
+
+リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4-mini`（エージェント / 評価モデル）と `gpt-5.4`（最適化モデル）もデプロイされます。
+
+```bash
+azd env new <環境名> --subscription <sub> --location <region>   # 例: eastus2
+azd env set AZURE_RESOURCE_GROUP "<rg>"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
+azd provision --preview   # 作成されるリソースを事前確認（what-if）
+azd provision
+```
+
+完了したら **B は実行せず**、「[2. デプロイする](#2-デプロイする)」へ進みます。
+
+> 旧版にあった `infra/*.bicep` は、現行の azd（1.34 系）では `uses the removed generic Connection provisioning contract` エラーで `azd provision` が失敗するため削除しました。接続が必要な場合は、`azure.yaml` に `host: azure.ai.connection` のサービスとして宣言します。
+
+##### B. 既存の Foundry プロジェクトを使う
+
+既存プロジェクトのエンドポイントとリソース ID を使います。このルートでは `azd provision` は実行しません。**`gpt-5.4-mini` と `gpt-5.4` のモデルデプロイを用意し、そのプロジェクトで利用できる権限があることを確認**してください。
+
+```bash
 azd env new <環境名>
 
 azd env set FOUNDRY_PROJECT_ENDPOINT "https://<account>.services.ai.azure.com/api/projects/<project>"
@@ -113,27 +216,9 @@ azd env set AZURE_RESOURCE_GROUP "<rg>"
 
 > `FOUNDRY_PROJECT_ENDPOINT` を設定しないと `azd ai ...` 系コマンドがプロジェクトを解決できません。
 
-Foundry プロジェクトごと新規に作る場合は、上記の `azd env set` の代わりに次を実行します。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4-mini`（エージェント / 評価モデル）と `gpt-5.4`（最適化モデル）もデプロイされます。
-
-```bash
-azd env new <環境名> --subscription <sub> --location <region>   # 例: eastus2
-azd env set AZURE_RESOURCE_GROUP "<rg>"
-azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
-azd provision --preview   # 作成されるリソースを事前確認（what-if）
-azd provision
-```
-
-> 旧版にあった `infra/*.bicep` は、現行の azd（1.34 系）では `uses the removed generic Connection provisioning contract` エラーで `azd provision` が失敗するため削除しました。接続が必要な場合は、`azure.yaml` に `host: azure.ai.connection` のサービスとして宣言します。
-
-> **権限 — `eval generate` が 401 になる場合**: 新規プロビジョニングでは、開発者に付与されるデータプレーンロールがプロジェクトスコープ（`Cognitive Services User`）だけになります。評価器の生成ジョブはアカウントの `/openai/v1/responses` を呼び出すため、`PermissionDenied ... lacks the required data action Microsoft.CognitiveServices/accounts/OpenAI/responses/write` で失敗します。Foundry アカウントのスコープで自分に **Foundry User**（旧名 Azure AI User）ロールを付与し、数分待ってから再実行してください。
->
-> ```bash
-> az role assignment create --assignee-object-id $(az ad signed-in-user show --query id -o tsv) \
->   --assignee-principal-type User --role "Foundry User" \
->   --scope $(az cognitiveservices account show -g <rg> -n <account> --query id -o tsv)
-> ```
-
 #### 2. デプロイする
+
+A / B どちらのルートでも、ここからの手順は共通です。
 
 ```bash
 azd ai agent doctor                              # 事前チェック
@@ -426,8 +511,10 @@ Results:
 
 ### コマンド
 
+`<自分の実行で得た候補ID>` は、Step 3 の **`Candidate IDs:` に表示された、採用する候補の ID** に置き換えてください。本文の過去の実行例にある `cand_opt_...` はコピーしないでください。`baseline ★` で採用する改善候補がない場合、この Step は実行しません。
+
 ```bash
-azd ai agent optimize apply --candidate cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0001
+azd ai agent optimize apply --candidate "<自分の実行で得た候補ID>"
 azd deploy travel-approval-agent --no-prompt
 ```
 
@@ -582,6 +669,17 @@ Results:
 1. **`ai-project` の deployment とエージェントの環境変数の不一致。** `services.ai-project.deployments` は `azd provision` が*作成*するものを制御するだけです。実行時に*呼び出す*先を制御するのはエージェントサービスの `AZURE_AI_MODEL_DEPLOYMENT_NAME` です。両者を揃えておかないと、存在しないデプロイを呼び出すことになります。
 2. **`OPTIMIZATION_CANDIDATE_ID` がデプロイの振る舞いを決めます。** `azure.yaml` の `env:` に設定されている間、`azd deploy` は候補構成を出荷します。削除すれば、再度 apply することなくベースラインにロールバックできます。本リポジトリの `azure.yaml` はベースライン状態（`OPTIMIZATION_CANDIDATE_ID` なし）で配布しています。対応する候補フォルダーが無い状態で ID だけを残すと、黙ってベースラインで動作します。
 
+> **権限 — `eval generate` が 401 になる場合**: 新規プロビジョニングでは、開発者に付与されるデータプレーンロールがプロジェクトスコープ（`Cognitive Services User`）だけになります。評価器の生成ジョブはアカウントの `/openai/v1/responses` を呼び出すため、`PermissionDenied ... lacks the required data action Microsoft.CognitiveServices/accounts/OpenAI/responses/write` で失敗します。Foundry アカウントのスコープで自分に **Foundry User**（旧名 Azure AI User）ロールを付与し、数分待ってから再実行してください。ロールを付与する権限がない場合は、管理者に依頼してください。
+>
+> 以下は **Azure CLI (`az`)** を使います。`azd auth login` とは別に、`az login` で同じアカウントにサインインしてから実行します。
+>
+> ```bash
+> az login
+> az role assignment create --assignee-object-id $(az ad signed-in-user show --query id -o tsv) \
+>   --assignee-principal-type User --role "Foundry User" \
+>   --scope $(az cognitiveservices account show -g <rg> -n <account> --query id -o tsv)
+> ```
+
 ### 最適化の設定
 
 3. **`--optimize-model` は必須です。** 省略すると対話プロンプトにはならず、`invalid config: options.optimization_model is required` で即死します。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
@@ -605,29 +703,7 @@ Results:
 
 ---
 
-## 11. サイクル全体図
-
-```mermaid
-flowchart TD
-    A["azd ai agent eval generate<br/>データセット + ルーブリックを生成<br/><i>初回のみ</i>"] --> B
-    B["azd ai agent eval run<br/>デプロイ済みエージェントのベースラインスコア<br/><i>約 2 分</i>"] --> C
-    C["azd ai agent optimize --optimize-model gpt-5.4<br/>候補を生成してランク付け<br/><i>15 サンプル・候補 5 で約 35 分</i>"] --> D
-    D["azd ai agent optimize apply --candidate &lt;id&gt;<br/>azd deploy<br/>勝者を出荷<br/><i>約 2 分</i>"] --> E
-    E["azd ai agent eval run<br/>デプロイ済みエージェントで改善を確認"] --> F{"改善幅<br/>>= 0.03？"}
-    F -- はい --> C
-    F -- いいえ --> G(["終了 - 収益逓減"])
-
-    classDef cmd fill:#eef,stroke:#447,stroke-width:1px,color:#000;
-    classDef decision fill:#ffd,stroke:#aa4,stroke-width:1px,color:#000;
-    classDef done fill:#dfd,stroke:#484,stroke-width:1px,color:#000;
-    class A,B,C,D,E cmd;
-    class F decision;
-    class G done;
-```
-
----
-
-## 12. 参考資料
+## 11. 参考資料
 
 - [エージェントオプティマイザーとは (プレビュー)](https://learn.microsoft.com/azure/foundry/agents/concepts/agent-optimizer-overview)
 - [エージェントの指示・スキル・ツール・モデルを最適化する (プレビュー)](https://learn.microsoft.com/azure/foundry/agents/how-to/optimize-agent-targets)
