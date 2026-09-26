@@ -1,112 +1,47 @@
-# 基本的なホステッドエージェント（Responses プロトコル）
+# 出張承認エージェント — 最適化サイクル用サンプル
 
-**Responses プロトコル**を使って Microsoft Foundry 上でホストされる、最小構成の [Agent Framework](https://github.com/microsoft/agent-framework) エージェントです。基本的なリクエスト/レスポンスのやりとりと、マルチターン会話をデモします。
+架空の会社 **Contoso Ltd.** の出張申請をレビューする、Microsoft Foundry のホステッドエージェントです。[Agent Framework](https://github.com/microsoft/agent-framework) と Responses プロトコルを使用し、評価・最適化の前後で応答の品質を比較するためのサンプルになっています。
+
+## 初めて動かす場合
+
+**セットアップ・デプロイ・評価・最適化の手順は、[リポジトリルートの README](../../README.md) にまとめています。**
+
+| 状況 | 進む場所 |
+|---|---|
+| まだ環境を準備していない | [前提条件・リポジトリの取得](../../README.md#2-前提条件) |
+| ツールとリポジトリは準備済み | [デプロイ手順（新規／既存プロジェクトを選択）](../../README.md#エージェントをホステッドエージェントとしてデプロイする) |
+| このサンプルをデプロイ・動作確認済みで、azd 環境も設定済み | [Step 1 — 評価スイートを生成する](../../README.md#3-step-1--評価スイートを生成する) |
+
+コマンドは、このフォルダーではなく **`azure.yaml` があるリポジトリルート**から実行します。別のサンプルを `azd ai agent init` で初期化する必要はありません。Azure 上で動かすため、モデル推論とホステッドエージェントの実行に利用料金が発生します。
+
+## エージェントが行うこと
+
+たとえば「3 日間の東京出張で、航空券とホテルが合計 2,800 ドル。承認できるか」という申請に対して、旅費規程・部門予算・代替案を確認して応答します。不足情報があれば、判断の前に追加情報を求めることもあります。
+
+| ツール | 返す情報 |
+|---|---|
+| `lookup_travel_policy` | 金額ごとの承認レベル、宿泊費の上限、航空券の条件、事前予約日数 |
+| `check_department_budget` | Engineering 部門の予算総額と残額 |
+| `get_flight_alternatives` | 日程変更や近隣空港の利用による節約案 |
+
+**これらのツールは固定のサンプルデータを返すだけです。** 外部の予約サービスや実際の社内システムには接続せず、出張の承認記録・航空券の予約・予算更新も行いません。本番業務の承認システムではなく、応答の評価・改善を学ぶための実装です。
 
 ## 仕組み
 
-このエージェントは Agent Framework の `FoundryChatClient` を使用し、`ResponsesHostServer` 経由で提供されます。`ResponsesHostServer` は OpenAI Responses プロトコル互換の REST API を公開します。実装は [main.py](main.py) を参照してください。
+[main.py](main.py) は `load_config()` で最適化用の構成を読み込み、指示・スキル・ツールの説明・モデルをエージェントに反映します。通常は `.agent_configs/baseline/` を使い、候補の適用後は `OPTIMIZATION_CANDIDATE_ID` で指定した構成を使います。
 
-## 方法 1: Azure Developer CLI (`azd`)
+モデル呼び出しには `FoundryChatClient`、API の公開には OpenAI Responses プロトコル互換の `ResponsesHostServer` を使用します。
 
-### 前提条件
+| ファイル | 役割 |
+|---|---|
+| [main.py](main.py) | エージェントの起動、ツールの実装、最適化構成の読み込み |
+| [requirements.txt](requirements.txt) | Python の依存関係。直接コードデプロイ時にリモートビルドでインストール |
+| [.agent_configs/baseline/metadata.yaml](.agent_configs/baseline/metadata.yaml) | モデルと構成ファイルの参照先 |
+| [.agent_configs/baseline/instructions.md](.agent_configs/baseline/instructions.md) | 最適化前のシステムプロンプト |
+| [.agent_configs/baseline/skills/policy-reviewer/SKILL.md](.agent_configs/baseline/skills/policy-reviewer/SKILL.md) | 出張申請レビューのスキル |
+| [.agent_configs/baseline/tools.json](.agent_configs/baseline/tools.json) | 最適化対象となるツールの説明とパラメーター定義 |
+| [../../azure.yaml](../../azure.yaml) | このサンプルのデプロイ定義、モデルデプロイ、エージェントの環境変数 |
 
-1. **Azure Developer CLI (`azd`)** — [azd をインストールする](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/install-azd)
-2. AI エージェント拡張機能をインストール:
-   ```bash
-   azd ext install azure.ai.agents
-   ```
-3. 認証:
-   ```bash
-   azd auth login
-   ```
+現行の手順では、エージェント定義はルートの `azure.yaml` を使います。このフォルダーに残る `agent.yaml` や `Dockerfile` を編集する必要はありません。直接コードデプロイを使うため、ローカルの Docker / ACR の準備も不要です。
 
-### エージェントプロジェクトを初期化する
-
-クローンは不要です。新しいフォルダーを作成し、マニフェストから初期化します:
-
-```bash
-mkdir my-basic-agent && cd my-basic-agent
-
-azd ai agent init -m https://github.com/microsoft-foundry/foundry-samples/blob/main/samples/python/hosted-agents/agent-framework/responses/01-basic/agent.manifest.yaml
-```
-
-プロンプトに従って Foundry プロジェクトとモデルデプロイを設定します。既存の Foundry プロジェクトがない場合でも、`azd ai agent init` が作成手順を案内してくれます。
-
-### Azure リソースをプロビジョニングする（必要な場合）
-
-Foundry プロジェクトとモデルデプロイがまだない場合:
-
-```bash
-azd provision
-```
-
-### ローカルでエージェントを実行する
-
-```bash
-azd ai agent run
-```
-
-エージェントホストが `http://localhost:8088` で起動します。
-
-### ローカルエージェントを呼び出す
-
-別のターミナルで、プロジェクトディレクトリから実行します:
-
-```bash
-azd ai agent invoke --local "Hi"
-```
-
-### Foundry にデプロイする
-
-ローカルでの動作確認ができたら、Microsoft Foundry にデプロイします:
-
-```bash
-azd deploy
-```
-
-デプロイの完全なガイドは [ホステッドエージェントをデプロイする](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/deploy-hosted-agent) を参照してください。
-
-### デプロイ済みエージェントを呼び出す
-
-```bash
-azd ai agent invoke "Hi"
-```
-
-## 方法 2: VS Code（Foundry Toolkit）
-
-### 前提条件
-
-1. **[Foundry Toolkit](https://marketplace.visualstudio.com/items?itemName=ms-azuretools.azure-ai-foundry)** 拡張機能をインストールした **VS Code**。
-2. VS Code で Azure にサインインしておくこと。
-
-### プロジェクトを作成する
-
-1. コマンドパレット (`Ctrl+Shift+P`) を開き、**Foundry Toolkit: Create Hosted Agent** を実行します。
-2. ギャラリーからこのサンプルを選択します。拡張機能が新しいワークスペースにプロジェクトをスキャフォールドし、`agent.yaml`、`.env`、`.vscode/tasks.json` + `launch.json` を自動生成します。
-3. **Foundry Project Setup** を完了して、サブスクリプションと Foundry プロジェクトを選択します（新規作成も可）。
-
-### エージェントを実行・デバッグする
-
-**F5** を押すとデバッグモードでエージェントが起動します。エージェントホストは `http://localhost:8088` で起動します。
-
-### Agent Inspector でテストする
-
-1. コマンドパレット (`Ctrl+Shift+P`) を開き、**Foundry Toolkit: Open Agent Inspector** を実行します。
-2. Inspector が実行中のエージェントに接続します。メッセージを送信して、ストリーミングされる応答を確認できます。
-
-### Foundry にデプロイする
-
-1. コマンドパレット (`Ctrl+Shift+P`) を開き、**Foundry Toolkit: Deploy Hosted Agent** を実行します。拡張機能が **Deploy Hosted Agent** ウィザードを開き、`agent.yaml` を読んで設定を自動入力します。
-2. 求められたら **Foundry Project Setup** を完了し、サブスクリプションとプロジェクトを選択します。
-3. **Basics** タブでデプロイ方式（**Code** または **Container**）を選び、エージェント名を確認します。
-4. **Review + Deploy** でランタイムの詳細を確認し、**CPU and Memory** サイズを選んで **Deploy** をクリックします。
-5. デプロイ後は Agent Playground でエージェントを呼び出し、**Logs** タブからライブログをストリーミングできます。
-
-## 次のステップ
-
-- [クイックスタート: ホステッドエージェントを作成する](https://learn.microsoft.com/en-us/azure/foundry/agents/quickstarts/quickstart-hosted-agent) — `azd` を使ったエンドツーエンドの解説
-- [ツールカタログ](https://learn.microsoft.com/en-us/azure/foundry/agents/concepts/tool-catalog) — エージェントを拡張するツール一覧（Bing Search、Azure AI Search、ファイル検索、コードインタープリターなど）
-- [ホステッドエージェントを管理する](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/manage-hosted-agent) — デプロイ済みエージェントの監視と管理
-- [エージェントにツールを追加する](../02-tools/) — ローカルツール関数のサンプル
-- [MCP サーバーに接続する](../03-mcp/) — リモート MCP ツールプロバイダーを使うサンプル
-- [Foundry Toolbox を使う](../04-foundry-toolbox/) — Azure Foundry Toolbox 連携のサンプル
+構成の適用方法やロールバックは、ルート README の [Step 4 — 勝者を適用してデプロイする](../../README.md#6-step-4--勝者を適用してデプロイする) を参照してください。
