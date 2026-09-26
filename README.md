@@ -56,12 +56,12 @@ azd ext upgrade --all
 pip install azure-ai-agentserver-optimization
 ```
 
-> `azd ext list --installed` の `STATUS` が `Incompatible` の場合は、azd 本体のバージョンが拡張機能の要求を満たしていません。azd 1.28.1 + `azure.ai.agents` 1.0.0-beta.7 の組み合わせで確認済みです。azd 1.34.2 + 1.0.0-beta.17 に更新すると解消します。
+> `azd ext list --installed` の `STATUS` が `Incompatible` の場合は、azd 本体のバージョンが拡張機能の要求を満たしていません。azd 1.34.2 に更新すると解消します。
 
 必要なもの:
 
-1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト（`azd ai agent invoke "test"` で確認できます）。
-2. プロジェクト内の 2 つのモデルデプロイ:
+1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト。最適化サイクルはデプロイ済みのエージェントを呼び出して評価するため、Step 1 より前に必要です。未デプロイなら後述の「[エージェントをホステッドエージェントとしてデプロイする](#エージェントをホステッドエージェントとしてデプロイする)」で作成します（`azd ai agent invoke "test"` で確認できます）。
+2. プロジェクト内の 2 つのモデルデプロイ（後述の `azd provision` でプロジェクトごと新規作成する場合は、`azure.yaml` の `ai-project.deployments` により両方とも作成されます。既存プロジェクトを使う場合は事前にデプロイしておきます）:
    - **評価モデル**（本リポジトリでは `gpt-5.4-mini`）— 応答を採点するジャッジ。Chat completion modelであること。
    - **最適化モデル**（「リフレクション」モデル）— サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro` 、`DeepSeek-V-3.2`  から選択。候補構成を生成します。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
