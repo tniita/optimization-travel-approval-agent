@@ -1,0 +1,9 @@
+# Direct runtime dependencies from the 2026-09-25 validation environment.
+# Regenerate requirements.txt after editing; see README.md.
+agent-framework-core==1.18.0
+agent-framework-foundry==1.13.0
+agent-framework-foundry-hosting==1.0.0b260910
+azure-ai-agentserver-optimization==1.0.0b1
+azure-ai-agentserver-responses==2.2.0b1
+azure-identity==1.25.3
+pydantic==2.13.5
