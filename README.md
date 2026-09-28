@@ -131,6 +131,8 @@ cd optimization-travel-approval-agent
 
 この手順は直接コードデプロイを使います。[requirements.txt](src/travel-approval-agent/requirements.txt) の依存関係は Azure 側のリモートビルドでインストールされるため、このデプロイ手順のためにローカルで `pip install` を行う必要はありません。実行環境は `azure.yaml` で Python 3.13 を指定しています。
 
+Python パッケージは、直接依存・間接依存とも `requirements.txt` でバージョン固定しています。通常のデプロイではこのファイルをそのまま使います。更新時は [依存パッケージの固定と更新](src/travel-approval-agent/README.md#依存パッケージの固定と更新) に従い、`requirements.in` と生成された `requirements.txt` を一緒に更新してください。
+
 ### Step 1 の開始までに揃えるもの
 
 1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト。最適化サイクルはデプロイ済みのエージェントを呼び出して評価するため、Step 1 より前に必要です。最初から用意されている必要はありません。未デプロイなら後述の「[エージェントをホステッドエージェントとしてデプロイする](#エージェントをホステッドエージェントとしてデプロイする)」で作成し、動作確認まで進めます。

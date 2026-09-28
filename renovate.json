@@ -2,5 +2,13 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
-  ]
+  ],
+  "pip-compile": {
+    "managerFilePatterns": [
+      "/^src/travel-approval-agent/requirements\\.txt$/"
+    ]
+  },
+  "pip_requirements": {
+    "enabled": false
+  }
 }

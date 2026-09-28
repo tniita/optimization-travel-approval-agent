@@ -35,7 +35,8 @@
 | ファイル | 役割 |
 |---|---|
 | [main.py](main.py) | エージェントの起動、ツールの実装、最適化構成の読み込み |
-| [requirements.txt](requirements.txt) | Python の依存関係。直接コードデプロイ時にリモートビルドでインストール |
+| [requirements.in](requirements.in) | 直接依存の固定バージョン。依存更新時の編集元 |
+| [requirements.txt](requirements.txt) | 直接依存・間接依存を固定した生成ファイル。リモートビルド・Docker・ローカルで共通利用 |
 | [.agent_configs/baseline/metadata.yaml](.agent_configs/baseline/metadata.yaml) | モデルと構成ファイルの参照先 |
 | [.agent_configs/baseline/instructions.md](.agent_configs/baseline/instructions.md) | 最適化前のシステムプロンプト |
 | [.agent_configs/baseline/skills/policy-reviewer/SKILL.md](.agent_configs/baseline/skills/policy-reviewer/SKILL.md) | 出張申請レビューのスキル |
@@ -45,3 +46,33 @@
 現行の手順では、エージェント定義はルートの `azure.yaml` を使います。このフォルダーに残る `agent.yaml` や `Dockerfile` を編集する必要はありません。直接コードデプロイを使うため、ローカルの Docker / ACR の準備も不要です。
 
 構成の適用方法やロールバックは、ルート README の [Step 4 — 勝者を適用してデプロイする](../../README.md#6-step-4--勝者を適用してデプロイする) を参照してください。
+
+## 依存パッケージの固定と更新
+
+`requirements.in` の直接依存と、生成された `requirements.txt` の間接依存は、すべて `==` でバージョン固定しています。2026-09-25 の検証時のローカル環境を基準にし、Python 3.13（Foundry）と Python 3.14（既存の Dockerfile / ローカル）で利用する構成です。`pywin32` などの OS 固有パッケージには条件を付けているため、Windows の環境をそのまま `pip freeze` して Linux に持ち込む形ではありません。
+
+通常のデプロイでは生成コマンドを実行する必要はありません。ローカル開発時も、仮想環境に同じファイルからインストールします。
+
+```bash
+# リポジトリルートから、使用する仮想環境を有効にした状態で実行
+python -m pip install -r src/travel-approval-agent/requirements.txt
+python -m pip check
+```
+
+依存を更新する場合だけ、次の手順を実施します。
+
+1. `requirements.in` の対象バージョンを更新します。プレビュー版も `==` で明示します。
+2. 更新作業用の仮想環境で、以下を実行します。`uv` は生成用であり、エージェントの実行には不要です。
+
+```bash
+python -m pip install uv==0.12.17
+cd src/travel-approval-agent
+uv pip compile requirements.in --universal --python-version 3.13 --no-annotate --output-file requirements.txt
+```
+
+3. 差分を確認し、空の仮想環境に `requirements.txt` をインストールして `python -m pip check` とエージェントの起動・ツール動作を確認します。デプロイ前には対象ランタイムでも確認してください。
+4. `requirements.in` と `requirements.txt` を一緒にコミットします。
+
+再生成時は既存の固定バージョンが優先されます。間接依存も意図的に更新するときだけ生成コマンドに `--upgrade` を追加し、同様に確認してください。Renovate は `pip-compile` マネージャーで編集元と生成ファイルをまとめて更新する設定です。自動生成された PR も、確認せずにマージしないでください。
+
+この固定の対象は Python パッケージのバージョンです。Python 本体、Docker ベースイメージ、azd、Azure 上のモデルやサービスまで固定するものではありません。また、固定後もセキュリティ修正などの更新は定期的に取り込む必要があります。
