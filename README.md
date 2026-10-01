@@ -30,7 +30,7 @@ flowchart TD
     P["準備<br/>環境を設定し、サンプルをデプロイ・動作確認"] --> A
     A["azd ai agent eval generate<br/>データセット + ルーブリックを生成<br/><i>初回のみ</i>"] --> B
     B["azd ai agent eval run<br/>デプロイ済みエージェントのベースラインを評価<br/><i>約 2 分</i>"] --> C
-    C["azd ai agent optimize --optimize-model gpt-5.4<br/>候補を生成してランク付け<br/><i>15 サンプル・候補 5 で約 35 分</i>"] --> H{"改善候補を<br/>採用する？"}
+    C["azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 2<br/>候補を生成してランク付け<br/><i>15 サンプル・候補 2 で約 15 分</i>"] --> H{"改善候補を<br/>採用する？"}
     H -- はい --> D
     H -- いいえ --> G(["終了、または設定を見直して再試行"])
     D["azd ai agent optimize apply --candidate &lt;id&gt;<br/>azd deploy<br/>選んだ候補をデプロイ<br/><i>約 2 分</i>"] --> E
@@ -441,7 +441,7 @@ Per-criteria results:
 ### コマンド
 
 ```bash
-azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 5
+azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 2
 ```
 
 **対話プロンプトはありません。** `--optimize-model` は必須で、省略すると即座に次のエラーで停止します。
@@ -471,7 +471,7 @@ options:
    - `skills/` あり → スキル改善
    - `tools.json` あり → ツール最適化
    - `optimization_config.model` あり → モデル選択
-3. `--max-candidates` 個の候補を生成します（既定 5）。
+3. `--max-candidates` 個の候補を生成します（CLI の既定は 5。本手順では 2 を指定）。
 4. 各候補をデータセットで評価・ランク付けし、勝者を ★ で示します。
 
 > 実行開始時に次のメッセージが出ます。**候補はドラフトバージョンとして作られ、明示的にデプロイするまで稼働中のエージェントには影響しません。**
@@ -516,6 +516,7 @@ Results:
 | --max-candidates | 所要時間 |
 |---:|---|
 | 1 | 約 10 分 |
+| 2（本手順） | 約 15 分 |
 | 5（既定） | 約 35 分 |
 
 所要時間はデータセット件数と候補数にほぼ比例します。
@@ -652,7 +653,7 @@ Per-criteria results:
 勝者候補が（`apply` + `deploy` によって）アクティブなベースラインになったら、さらに上を目指してもう一周最適化を回せます:
 
 ```bash
-azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 5
+azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 2
 ```
 
 ### 2 周目の見方（過去の実行例）
