@@ -687,8 +687,6 @@ Results:
 | `src/<agent>/datasets/<suite>/` | 生成された合成データセット (JSONL) |
 | `src/<agent>/evaluators/<suite>/rubric_dimensions.json` | 編集可能なルーブリック定義 |
 
-旧バージョンの拡張が使っていた `src/<agent>/agent.yaml` は、現在のフローでは参照されません。エージェント定義は `azure.yaml` のサービスブロックに一本化されています。
-
 ### 覚えておきたい `azd env` の値
 
 | 変数 | 用途 |
