@@ -3,11 +3,13 @@ import logging
 import os
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlparse
 
 from agent_framework import Agent, tool
+from agent_framework.anthropic import AnthropicFoundryClient
 from agent_framework.foundry import FoundryChatClient
 from agent_framework_foundry_hosting import ResponsesHostServer
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, get_bearer_token_provider
 from pydantic import Field
 from azure.ai.agentserver.optimization import load_config, load_skills_from_dir
 
@@ -51,6 +53,21 @@ def get_flight_alternatives(
     })
 
 
+def create_chat_client(model: str, project_endpoint: str, credential: DefaultAzureCredential):
+    if model.startswith("claude"):
+        # Claude on Foundry is served by the Anthropic Messages API, not the OpenAI-compatible one.
+        return AnthropicFoundryClient(
+            model=model,
+            resource=urlparse(project_endpoint).hostname.split(".")[0],
+            azure_ad_token_provider=get_bearer_token_provider(
+                credential, "https://ai.azure.com/.default"
+            ),
+        )
+    return FoundryChatClient(
+        project_endpoint=project_endpoint, model=model, credential=credential
+    )
+
+
 def main():
     # Load optimization config from .agent_configs/
     config = load_config()
@@ -66,7 +83,7 @@ def main():
         config.skills.extend(load_skills_from_dir(Path(config.skills_dir)))
 
     model = config.model or os.environ.get(
-        "AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-5.4"
+        "AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-5.4-mini"
     )
     instructions = config.compose_instructions()
 
@@ -79,17 +96,16 @@ def main():
         config.source, model, len(instructions), len(config.skills),
     )
 
-    client = FoundryChatClient(
-        project_endpoint=os.environ["FOUNDRY_PROJECT_ENDPOINT"],
-        model=model,
-        credential=DefaultAzureCredential(),
+    client = create_chat_client(
+        model, os.environ["FOUNDRY_PROJECT_ENDPOINT"], DefaultAzureCredential()
     )
 
     agent = Agent(
         client=client,
         instructions=instructions,
         tools=tools,
-        default_options={"store": False},
+        # The Anthropic Messages API rejects the OpenAI-only `store` option.
+        default_options={"store": False} if isinstance(client, FoundryChatClient) else {},
     )
 
     server = ResponsesHostServer(agent)

@@ -69,7 +69,7 @@ flowchart TD
 | 指示チューニング | `instructions.md` | システムプロンプトが書き換えられる |
 | スキル改善 | `skills/` ディレクトリ | スキルの説明・本文が洗練される |
 | ツール最適化 | `tools.json` | ツールの説明とパラメーター定義が改善される |
-| モデル選択 | `eval.yaml` の `options.optimization_config.model`（手動で追記） | スコアとトークンコストから最適なモデルデプロイが選ばれる |
+| モデル選択 | `eval.yaml` の `options.optimization_config.model_search_space`（手動で追記。[手順](#モデル選択を有効にする)） | スコアとトークンコストから最適なモデルデプロイが選ばれる |
 
 ベースラインは次の構成で配置します。
 
@@ -87,7 +87,7 @@ src/<agent-name>/
 `metadata.yaml` の例:
 
 ```yaml
-model: gpt-5.4
+model: gpt-5.4-mini
 instruction_file: instructions.md
 skill_dir: skills
 tools_file: tools.json
@@ -160,9 +160,10 @@ Python パッケージは、直接依存・間接依存とも `requirements.txt`
 ### Step 1 の開始までに揃えるもの
 
 1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト。最適化サイクルはデプロイ済みのエージェントを呼び出して評価するため、Step 1 より前に必要です。最初から用意されている必要はありません。未デプロイなら後述の「[エージェントをホステッドエージェントとしてデプロイする](#エージェントをホステッドエージェントとしてデプロイする)」で作成し、動作確認まで進めます。
-2. プロジェクト内の 2 つのモデルデプロイ（後述の `azd provision` でプロジェクトごと新規作成する場合は、`azure.yaml` の `ai-project.deployments` により両方とも作成されます。既存プロジェクトを使う場合は事前にデプロイしておきます）:
-   - **`gpt-5.4`** — 本手順でエージェント実行、評価、最適化（リフレクション）に使用する既定モデル。評価に使うモデルは Chat completion model であること。
-   - **`gpt-5.5`** — モデル選択の比較や、別のリフレクションモデルを試すための代替モデル。本手順のコマンド例では、実行条件を揃えるため `gpt-5.4` を使用します。
+2. プロジェクト内の 3 つのモデルデプロイ（後述の `azd provision` でプロジェクトごと新規作成する場合は、`azure.yaml` の `ai-project.deployments` により 3 つとも作成されます。既存プロジェクトを使う場合は事前にデプロイしておきます）:
+   - **`gpt-5.4-mini`** — エージェントが応答に使う既定モデル（`metadata.yaml` の `model`）。
+   - **`gpt-5.4`** — 評価（ジャッジ）と最適化（リフレクション）に使うモデル。[モデル選択](#モデル選択を有効にする)では、エージェントのモデル候補にもなります。評価に使うモデルは Chat completion model であること。
+   - **`gpt-5.5`** — 別のリフレクションモデルを試すための代替モデル。本手順のコマンド例では使いません。
 
    最適化（リフレクション）モデルは、サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro`、`DeepSeek-V-3.2` から選択します。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。**本サンプルは対応済みです。** 自分のエージェントに適用する場合は、[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
@@ -191,23 +192,26 @@ azd auth login
 
 ##### A. Foundry プロジェクトを新規作成する
 
-リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4`（本手順の既定モデル）と `gpt-5.5`（比較・実験用の代替モデル）のデプロイも作成されます。
+リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4-mini`（エージェントの既定モデル）、`gpt-5.4`（評価・最適化用）、`gpt-5.5`（代替モデル）のデプロイも作成されます。
 
 ```bash
 azd env new <環境名> --subscription <sub> --location <region>   # 例: eastus2
 azd env set AZURE_RESOURCE_GROUP "<rg>"
-azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
 azd provision --preview   # 作成されるリソースを事前確認（what-if）
 azd provision
 ```
 
 完了したら **B は実行せず**、「[2. デプロイする](#2-デプロイする)」へ進みます。
 
+> [!NOTE]
+> **オプション — Claude モデル**: `ai-project.deployments` には、[モデル選択](#claude-を候補に加える任意)で使える `claude-sonnet-5-5`、`claude-opus-5-5`、`claude-opus-5` も定義しています。Claude のデプロイには Anthropic の利用規約への同意（組織名・国・業種）が必要ですが、azd がこの情報を渡せるかは確認できていません。`azd provision` が Claude のデプロイで失敗する場合や Claude を使わない場合は、`azure.yaml` から 3 つの Claude の定義を削除してから実行し、必要なら Foundry ポータルからデプロイしてください。
+
 > 旧版にあった `infra/*.bicep` は、現行の azd（1.34 系）では `uses the removed generic Connection provisioning contract` エラーで `azd provision` が失敗するため削除しました。接続が必要な場合は、`azure.yaml` に `host: azure.ai.connection` のサービスとして宣言します。
 
 ##### B. 既存の Foundry プロジェクトを使う
 
-既存プロジェクトのエンドポイントとリソース ID を使います。このルートでは `azd provision` は実行しません。**本手順をそのまま実行するには `gpt-5.4`、モデル比較も行うには `gpt-5.5` のモデルデプロイも用意し、そのプロジェクトで利用できる権限があることを確認**してください。
+既存プロジェクトのエンドポイントとリソース ID を使います。このルートでは `azd provision` は実行しません。**本手順をそのまま実行するには `gpt-5.4-mini` と `gpt-5.4` のモデルデプロイを用意し、そのプロジェクトで利用できる権限があることを確認**してください。
 
 ```bash
 azd env new <環境名>
@@ -215,7 +219,7 @@ azd env new <環境名>
 azd env set FOUNDRY_PROJECT_ENDPOINT "https://<account>.services.ai.azure.com/api/projects/<project>"
 azd env set AZURE_AI_PROJECT_ENDPOINT "https://<account>.services.ai.azure.com/api/projects/<project>"
 azd env set AZURE_AI_PROJECT_ID "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>"
-azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
 azd env set AZURE_SUBSCRIPTION_ID "<sub>"
 azd env set AZURE_LOCATION "<region>"
 azd env set AZURE_RESOURCE_GROUP "<rg>"
@@ -257,6 +261,9 @@ azd deploy travel-approval-agent --no-prompt
 ```
 
 成功すると新しいバージョンが発行され、Playground URL と Responses エンドポイントが表示されます。
+
+> [!TIP]
+> **オプション — エージェントだけをデプロイする**: サービス名を付けた `azd deploy travel-approval-agent` はホステッドエージェントのコードだけをデプロイし、モデルデプロイの作成や変更は行いません。`azure.yaml` の `ai-project.deployments` と実際のモデルデプロイが異なっていても（Claude の定義が未作成など）、そのままエージェントを更新できます。モデルデプロイを作る `azd provision` と、それを含む `azd up` は実行しないでください。
 
 #### 3. 動作確認する
 
@@ -456,17 +463,48 @@ ERROR: invalid config: options.optimization_model is required:
        pass --optimize-model <name>, or add 'optimization_model' under 'options:' in your config
 ```
 
-毎回フラグで渡す代わりに、`eval.yaml` の `options:` に書いておくこともできます。モデル選択ターゲットを有効にする `optimization_config.model` もここに追記します（`eval generate` は書き出しません）。
+毎回フラグで渡す代わりに、`eval.yaml` の `options:` に `optimization_model` を書いておくこともできます（次の「モデル選択を有効にする」の例を参照）。
+
+### モデル選択を有効にする
+
+本サンプルのエージェントは、既定で `gpt-5.4-mini` を使います（`metadata.yaml` の `model`）。`gpt-5.4` に切り替えたほうが良いかもオプティマイザーに比較させるには、Step 1 で生成された `src/travel-approval-agent/eval.yaml` の `options:` を次のように編集します。`eval generate` はこの設定を書き出しません。
 
 ```yaml
 options:
-  eval_model: gpt-5.4
-  optimization_model: gpt-5.4
-  optimization_config:
-    model:
-      - gpt-5.4
-      - gpt-5.5
+    eval_model: gpt-5.4
+    optimization_model: gpt-5.4
+    optimization_config:
+        model_search_space:
+            - gpt-5.4-mini
+            - gpt-5.4
 ```
+
+| キー | 意味 |
+|---|---|
+| `eval_model` | 応答を採点するモデル（生成時のまま） |
+| `optimization_model` | 候補を生成するリフレクションモデル。書いておくと `--optimize-model` を省略できます |
+| `optimization_config.model_search_space` | エージェントのモデル候補。ここに書いたモデルでも同じデータセットを評価し、スコアとトークンコストで順位付けします |
+
+- リストには現在のモデル（`gpt-5.4-mini`）も含めていますが、ベースラインと同じなので候補からは自動的に除外されます。実際に比較されるのは `gpt-5.4` です。
+- リストのモデルは、すべてプロジェクトにデプロイされている必要があります。
+- モデル選択は、指示・スキル・ツールの最適化と同じ実行の中で行われます。改善した指示と別のモデルを組み合わせた候補が出ることもあります。
+
+詳しくは [Evaluate multiple models](https://learn.microsoft.com/azure/foundry/agents/how-to/optimize-agent-targets#evaluate-multiple-models) を参照してください。
+
+#### Claude を候補に加える（任意）
+
+エージェントのモデルには Claude も指定できます。Foundry の Claude は OpenAI 互換の API ではなく Anthropic の Messages API で呼び出します。本サンプルの `main.py` は、モデル名が `claude` で始まる場合に `AnthropicFoundryClient` に切り替えるため、コードの変更は不要です。
+
+1. エージェントと同じ Foundry アカウントに Claude をデプロイします。`azure.yaml` には `claude-sonnet-5-5`、`claude-opus-5-5`　を定義していますが、Claude のデプロイには Azure Marketplace の Anthropic の利用規約への同意（組織名・国・業種の入力）が必要です。`azd provision` で作成されない場合は、Foundry ポータルのモデルカタログからデプロイしてください（[Claude モデルをデプロイする](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/use-foundry-models-claude)）。デプロイ名は `claude` で始めます。
+2. `eval.yaml` の `model_search_space` にデプロイ名を追加します。
+
+   ```yaml
+       optimization_config:
+           model_search_space:
+               - gpt-5.4-mini
+               - gpt-5.4
+               - claude-sonnet-5-5
+   ```
 
 ### 内部で起きること
 
@@ -475,7 +513,7 @@ options:
    - `instructions.md` あり → 指示チューニング（strategy: `system_prompt`）
    - `skills/` あり → スキル改善
    - `tools.json` あり → ツール最適化
-   - `optimization_config.model` あり → モデル選択
+   - `optimization_config.model_search_space` あり → モデル選択
 3. `--max-candidates` 個の候補を生成します（CLI の既定は 5。本手順では 2 を指定）。
 4. 各候補をデータセットで評価・ランク付けし、勝者を ★ で示します。
 
@@ -608,7 +646,7 @@ services:
 
 ```json
 {
-  "AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-5.4",
+  "AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-5.4-mini",
   "OPTIMIZATION_CANDIDATE_ID": "cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0001",
   "OPTIMIZATION_LOCAL_DIR": ".agent_configs"
 }
@@ -725,7 +763,7 @@ Results:
 ### 最適化の設定
 
 3. **`--optimize-model` は必須です。** 省略すると対話プロンプトにはならず、`invalid config: options.optimization_model is required` で即死します。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
-4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` しか入っていません。`optimization_model` や `optimization_config.model` は自分で追記するか、フラグで渡します。
+4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` しか入っていません。`optimization_model` や `optimization_config.model_search_space` は自分で追記するか、フラグで渡します。
 5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
 6. **リフレクションモデルは gpt-5 ファミリー**を選びます。mini 系はサポート外です。
 7. **評価モデルのサイレント障害。** 評価モデルのデプロイがないと、エラーなしで全スコアが 0 になります。実行前に必ずポータルで確認してください。

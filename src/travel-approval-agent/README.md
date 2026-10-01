@@ -30,7 +30,7 @@
 
 [main.py](main.py) は `load_config()` で最適化用の構成を読み込み、指示・スキル・ツールの説明・モデルをエージェントに反映します。通常は `.agent_configs/baseline/` を使い、候補の適用後は `OPTIMIZATION_CANDIDATE_ID` で指定した構成を使います。
 
-モデル呼び出しには `FoundryChatClient`、API の公開には OpenAI Responses プロトコル互換の `ResponsesHostServer` を使用します。
+モデル呼び出しには `FoundryChatClient` を使い、モデル名が `claude` で始まる場合だけ Anthropic の Messages API を呼ぶ `AnthropicFoundryClient` に切り替えます。API の公開には OpenAI Responses プロトコル互換の `ResponsesHostServer` を使用します。
 
 | ファイル | 役割 |
 |---|---|
