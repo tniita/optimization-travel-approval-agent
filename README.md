@@ -205,7 +205,7 @@ azd provision
 完了したら **B は実行せず**、「[2. デプロイする](#2-デプロイする)」へ進みます。
 
 > [!NOTE]
-> **オプション — Claude モデル**: `ai-project.deployments` には、[モデル選択](#claude-を候補に加える任意)で使える `claude-sonnet-5-5`、`claude-opus-5-5`、`claude-opus-5` も定義しています。Claude のデプロイには Anthropic の利用規約への同意（組織名・国・業種）が必要ですが、azd がこの情報を渡せるかは確認できていません。`azd provision` が Claude のデプロイで失敗する場合や Claude を使わない場合は、`azure.yaml` から 3 つの Claude の定義を削除してから実行し、必要なら Foundry ポータルからデプロイしてください。
+> **オプション — Claude モデル**: `ai-project.deployments` には、[モデル選択](#claude-を候補に加える任意)で使える `claude-sonnet-5-5`、`claude-opus-5-5` も定義しています。Claude のデプロイには Anthropic の利用規約への同意（組織名・国・業種）が必要ですが、azd がこの情報を渡せるかは確認できていません。`azd provision` が Claude のデプロイで失敗する場合や Claude を使わない場合は、`azure.yaml` から 3 つの Claude の定義を削除してから実行し、必要なら Foundry ポータルからデプロイしてください。
 
 > 旧版にあった `infra/*.bicep` は、現行の azd（1.34 系）では `uses the removed generic Connection provisioning contract` エラーで `azd provision` が失敗するため削除しました。接続が必要な場合は、`azure.yaml` に `host: azure.ai.connection` のサービスとして宣言します。
 
