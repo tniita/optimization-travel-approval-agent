@@ -77,6 +77,8 @@ flowchart TD
 
 ### スコア変化の解釈
 
+[エージェントオプティマイザーとは (プレビュー) — 最適化結果を理解する](https://learn.microsoft.com/azure/foundry/agents/concepts/agent-optimizer-overview#understand-optimization-results) の目安です。
+
 | 改善幅 | 解釈 |
 |---:|---|
 | < 0.03 | ノイズ |

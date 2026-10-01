@@ -1,4 +1,0 @@
-model: gpt-5.4
-instruction_file: instructions.md
-tools_file: tools.json
-skill_dir: skills

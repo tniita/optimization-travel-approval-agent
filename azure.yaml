@@ -3,7 +3,7 @@
 requiredVersions:
     extensions:
         azure.ai.agents: '>=1.0.0-beta.17'
-name: ai-foundry-starter-basic
+name: optimization-travel-approval-agent
 services:
     ai-project:
         host: azure.ai.project
@@ -14,7 +14,7 @@ services:
                 version: "2026-04-24"
               name: gpt-5.5
               sku:
-                capacity: 1000
+                capacity: 250
                 name: GlobalStandard
             - model:
                 format: OpenAI
@@ -22,7 +22,7 @@ services:
                 version: "2026-03-05"
               name: gpt-5.4
               sku:
-                capacity: 250
+                capacity: 1000
                 name: GlobalStandard
     travel-approval-agent:
         project: src/travel-approval-agent

@@ -13,6 +13,17 @@
   {
     "type": "function",
     "function": {
+      "name": "check_department_budget",
+      "description": "Check the remaining travel budget for the employee's department.",
+      "parameters": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
       "name": "get_flight_alternatives",
       "description": "Find cheaper flight alternatives for the given destination.",
       "parameters": {
