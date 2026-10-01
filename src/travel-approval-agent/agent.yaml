@@ -1,3 +1,5 @@
+# Legacy definition retained for reference only.
+# The current deployment flow uses the repository-root azure.yaml.
 kind: hosted
 name: travel-approval-agent
 description: |
