@@ -137,8 +137,10 @@ Python パッケージは、直接依存・間接依存とも `requirements.txt`
 
 1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト。最適化サイクルはデプロイ済みのエージェントを呼び出して評価するため、Step 1 より前に必要です。最初から用意されている必要はありません。未デプロイなら後述の「[エージェントをホステッドエージェントとしてデプロイする](#エージェントをホステッドエージェントとしてデプロイする)」で作成し、動作確認まで進めます。
 2. プロジェクト内の 2 つのモデルデプロイ（後述の `azd provision` でプロジェクトごと新規作成する場合は、`azure.yaml` の `ai-project.deployments` により両方とも作成されます。既存プロジェクトを使う場合は事前にデプロイしておきます）:
-  - **評価モデル**（本リポジトリでは `gpt-5.4`）— 応答を採点するジャッジ。Chat completion modelであること。
-   - **最適化モデル**（「リフレクション」モデル）— サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro` 、`DeepSeek-V-3.2`  から選択。候補構成を生成します。
+   - **`gpt-5.4`** — 本手順でエージェント実行、評価、最適化（リフレクション）に使用する既定モデル。評価に使うモデルは Chat completion model であること。
+   - **`gpt-5.5`** — モデル選択の比較や、別のリフレクションモデルを試すための代替モデル。本手順のコマンド例では、実行条件を揃えるため `gpt-5.4` を使用します。
+
+   最適化（リフレクション）モデルは、サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro`、`DeepSeek-V-3.2` から選択します。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。**本サンプルは対応済みです。** 自分のエージェントに適用する場合は、[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
 
 > **重要 — サイレント障害**: 評価モデルがプロジェクトにデプロイされていない場合、**エラーメッセージなしにすべてのスコアがゼロ**になります。実行前に必ず Foundry ポータルでデプロイを確認してください。
@@ -186,7 +188,7 @@ azd auth login
 
 ##### A. Foundry プロジェクトを新規作成する
 
-リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.5` と `gpt-5.4` のモデルデプロイも作成されます。
+リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4`（本手順の既定モデル）と `gpt-5.5`（比較・実験用の代替モデル）のデプロイも作成されます。
 
 ```bash
 azd env new <環境名> --subscription <sub> --location <region>   # 例: eastus2
@@ -202,7 +204,7 @@ azd provision
 
 ##### B. 既存の Foundry プロジェクトを使う
 
-既存プロジェクトのエンドポイントとリソース ID を使います。このルートでは `azd provision` は実行しません。**`gpt-5.5` と `gpt-5.4` のモデルデプロイを用意し、そのプロジェクトで利用できる権限があることを確認**してください。
+既存プロジェクトのエンドポイントとリソース ID を使います。このルートでは `azd provision` は実行しません。**本手順をそのまま実行するには `gpt-5.4`、モデル比較も行うには `gpt-5.5` のモデルデプロイも用意し、そのプロジェクトで利用できる権限があることを確認**してください。
 
 ```bash
 azd env new <環境名>
@@ -456,11 +458,11 @@ ERROR: invalid config: options.optimization_model is required:
 ```yaml
 options:
   eval_model: gpt-5.4
-    optimization_model: gpt-5.4
-    optimization_config:
-        model:
-            - gpt-4.1-mini
+  optimization_model: gpt-5.4
+  optimization_config:
+    model:
       - gpt-5.4
+      - gpt-5.5
 ```
 
 ### 内部で起きること

@@ -43,7 +43,7 @@
 | [.agent_configs/baseline/tools.json](.agent_configs/baseline/tools.json) | 最適化対象となるツールの説明とパラメーター定義 |
 | [../../azure.yaml](../../azure.yaml) | このサンプルのデプロイ定義、モデルデプロイ、エージェントの環境変数 |
 
-現行の手順では、エージェント定義はルートの `azure.yaml` を使います。このフォルダーに残る `agent.yaml` や `Dockerfile` を編集する必要はありません。直接コードデプロイを使うため、ローカルの Docker / ACR の準備も不要です。
+現行の手順では、エージェント定義はルートの `azure.yaml` を使います。直接コードデプロイを使うため、ローカルの Docker / ACR の準備も不要です。`Dockerfile` は旧方式の参考用に残していますが、現行のデプロイでは使用しません。
 
 構成の適用方法やロールバックは、ルート README の [Step 4 — 勝者を適用してデプロイする](../../README.md#6-step-4--勝者を適用してデプロイする) を参照してください。
 
