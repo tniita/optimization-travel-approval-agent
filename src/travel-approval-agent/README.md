@@ -36,20 +36,20 @@
 |---|---|
 | [main.py](main.py) | エージェントの起動、ツールの実装、最適化構成の読み込み |
 | [requirements.in](requirements.in) | 直接依存の固定バージョン。依存更新時の編集元 |
-| [requirements.txt](requirements.txt) | 直接依存・間接依存を固定した生成ファイル。リモートビルド・Docker・ローカルで共通利用 |
+| [requirements.txt](requirements.txt) | 直接依存・間接依存を固定した生成ファイル。リモートビルド・ローカルで共通利用 |
 | [.agent_configs/baseline/metadata.yaml](.agent_configs/baseline/metadata.yaml) | モデルと構成ファイルの参照先 |
 | [.agent_configs/baseline/instructions.md](.agent_configs/baseline/instructions.md) | 最適化前のシステムプロンプト |
 | [.agent_configs/baseline/skills/policy-reviewer/SKILL.md](.agent_configs/baseline/skills/policy-reviewer/SKILL.md) | 出張申請レビューのスキル |
 | [.agent_configs/baseline/tools.json](.agent_configs/baseline/tools.json) | 最適化対象となるツールの説明とパラメーター定義 |
 | [../../azure.yaml](../../azure.yaml) | このサンプルのデプロイ定義、モデルデプロイ、エージェントの環境変数 |
 
-現行の手順では、エージェント定義はルートの `azure.yaml` を使います。直接コードデプロイを使うため、ローカルの Docker / ACR の準備も不要です。`Dockerfile` は旧方式の参考用に残していますが、現行のデプロイでは使用しません。
+現行の手順では、エージェント定義はルートの `azure.yaml` を使います。直接コードデプロイを使うため、ローカルの Docker / ACR の準備も不要です。
 
 構成の適用方法やロールバックは、ルート README の [Step 4 — 勝者を適用してデプロイする](../../README.md#6-step-4--勝者を適用してデプロイする) を参照してください。
 
 ## 依存パッケージの固定と更新
 
-`requirements.in` の直接依存と、生成された `requirements.txt` の間接依存は、すべて `==` でバージョン固定しています。2026-09-25 の検証時のローカル環境を基準にし、Python 3.13（Foundry）と Python 3.14（既存の Dockerfile / ローカル）で利用する構成です。`pywin32` などの OS 固有パッケージには条件を付けているため、Windows の環境をそのまま `pip freeze` して Linux に持ち込む形ではありません。
+`requirements.in` の直接依存と、生成された `requirements.txt` の間接依存は、すべて `==` でバージョン固定しています。2026-09-25 の検証時のローカル環境を基準にし、Python 3.13（Foundry）と Python 3.14（ローカル）で利用する構成です。`pywin32` などの OS 固有パッケージには条件を付けているため、Windows の環境をそのまま `pip freeze` して Linux に持ち込む形ではありません。
 
 通常のデプロイでは生成コマンドを実行する必要はありません。ローカル開発時も、仮想環境に同じファイルからインストールします。
 
@@ -75,4 +75,4 @@ uv pip compile requirements.in --universal --python-version 3.13 --no-annotate -
 
 再生成時は既存の固定バージョンが優先されます。間接依存も意図的に更新するときだけ生成コマンドに `--upgrade` を追加し、同様に確認してください。Renovate は `pip-compile` マネージャーで編集元と生成ファイルをまとめて更新する設定です。自動生成された PR も、確認せずにマージしないでください。
 
-この固定の対象は Python パッケージのバージョンです。Python 本体、Docker ベースイメージ、azd、Azure 上のモデルやサービスまで固定するものではありません。また、固定後もセキュリティ修正などの更新は定期的に取り込む必要があります。
+この固定の対象は Python パッケージのバージョンです。Python 本体、azd、Azure 上のモデルやサービスまで固定するものではありません。また、固定後もセキュリティ修正などの更新は定期的に取り込む必要があります。
