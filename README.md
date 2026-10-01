@@ -137,7 +137,7 @@ Python パッケージは、直接依存・間接依存とも `requirements.txt`
 
 1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト。最適化サイクルはデプロイ済みのエージェントを呼び出して評価するため、Step 1 より前に必要です。最初から用意されている必要はありません。未デプロイなら後述の「[エージェントをホステッドエージェントとしてデプロイする](#エージェントをホステッドエージェントとしてデプロイする)」で作成し、動作確認まで進めます。
 2. プロジェクト内の 2 つのモデルデプロイ（後述の `azd provision` でプロジェクトごと新規作成する場合は、`azure.yaml` の `ai-project.deployments` により両方とも作成されます。既存プロジェクトを使う場合は事前にデプロイしておきます）:
-   - **評価モデル**（本リポジトリでは `gpt-5.4-mini`）— 応答を採点するジャッジ。Chat completion modelであること。
+  - **評価モデル**（本リポジトリでは `gpt-5.4`）— 応答を採点するジャッジ。Chat completion modelであること。
    - **最適化モデル**（「リフレクション」モデル）— サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro` 、`DeepSeek-V-3.2`  から選択。候補構成を生成します。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。**本サンプルは対応済みです。** 自分のエージェントに適用する場合は、[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
 
@@ -159,7 +159,7 @@ src/<agent-name>/
 `metadata.yaml` の例:
 
 ```yaml
-model: gpt-5.4-mini
+model: gpt-5.4
 instruction_file: instructions.md
 skill_dir: skills
 tools_file: tools.json
@@ -186,12 +186,12 @@ azd auth login
 
 ##### A. Foundry プロジェクトを新規作成する
 
-リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4-mini`（エージェント / 評価モデル）と `gpt-5.4`（最適化モデル）もデプロイされます。
+リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.5` と `gpt-5.4` のモデルデプロイも作成されます。
 
 ```bash
 azd env new <環境名> --subscription <sub> --location <region>   # 例: eastus2
 azd env set AZURE_RESOURCE_GROUP "<rg>"
-azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4"
 azd provision --preview   # 作成されるリソースを事前確認（what-if）
 azd provision
 ```
@@ -202,7 +202,7 @@ azd provision
 
 ##### B. 既存の Foundry プロジェクトを使う
 
-既存プロジェクトのエンドポイントとリソース ID を使います。このルートでは `azd provision` は実行しません。**`gpt-5.4-mini` と `gpt-5.4` のモデルデプロイを用意し、そのプロジェクトで利用できる権限があることを確認**してください。
+既存プロジェクトのエンドポイントとリソース ID を使います。このルートでは `azd provision` は実行しません。**`gpt-5.5` と `gpt-5.4` のモデルデプロイを用意し、そのプロジェクトで利用できる権限があることを確認**してください。
 
 ```bash
 azd env new <環境名>
@@ -210,10 +210,34 @@ azd env new <環境名>
 azd env set FOUNDRY_PROJECT_ENDPOINT "https://<account>.services.ai.azure.com/api/projects/<project>"
 azd env set AZURE_AI_PROJECT_ENDPOINT "https://<account>.services.ai.azure.com/api/projects/<project>"
 azd env set AZURE_AI_PROJECT_ID "/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>"
-azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4-mini"
+azd env set AZURE_AI_MODEL_DEPLOYMENT_NAME "gpt-5.4"
 azd env set AZURE_SUBSCRIPTION_ID "<sub>"
 azd env set AZURE_LOCATION "<region>"
 azd env set AZURE_RESOURCE_GROUP "<rg>"
+```
+
+`AZURE_AI_PROJECT_ID` は Foundry プロジェクトの Azure リソース ID です。`<sub>` はサブスクリプション ID、`<rg>` はリソースグループ名、`<account>` は Foundry アカウント名、`<project>` はプロジェクト名を表します。
+
+```text
+/subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.CognitiveServices/accounts/<account>/projects/<project>
+```
+
+プロジェクトのエンドポイントが `https://agent-optimizer.services.ai.azure.com/api/projects/proj-default` の場合、`<account>` は `agent-optimizer`、`<project>` は `proj-default` です。サブスクリプション ID とリソースグループ名は Azure portal のプロジェクト概要、または次のコマンドで確認できます。
+
+```bash
+az account show --query id --output tsv
+az resource list --resource-type Microsoft.CognitiveServices/accounts/projects \
+  --query "[].{name:name, resourceGroup:resourceGroup, id:id}" --output table
+```
+
+プロジェクト名とリソースグループが分かっている場合は、リソース ID を直接取得できます。
+
+```bash
+az resource show \
+  --resource-group "<rg>" \
+  --name "<account>/<project>" \
+  --resource-type Microsoft.CognitiveServices/accounts/projects \
+  --query id --output tsv
 ```
 
 > `FOUNDRY_PROJECT_ENDPOINT` を設定しないと `azd ai ...` 系コマンドがプロジェクトを解決できません。
@@ -349,7 +373,7 @@ evaluators:
       version: "1"
       local_uri: evaluators/smoke-core/rubric_dimensions.json
 options:
-    eval_model: gpt-5.4-mini
+  eval_model: gpt-5.4
 max_samples: 15
 ```
 
@@ -431,12 +455,12 @@ ERROR: invalid config: options.optimization_model is required:
 
 ```yaml
 options:
-    eval_model: gpt-5.4-mini
+  eval_model: gpt-5.4
     optimization_model: gpt-5.4
     optimization_config:
         model:
             - gpt-4.1-mini
-            - gpt-5.4-mini
+      - gpt-5.4
 ```
 
 ### 内部で起きること
@@ -487,7 +511,7 @@ Results:
 
 ### 所要時間の目安
 
-実測（15 タスクのデータセット + `gpt-5.4-mini` ジャッジ + `gpt-5.4` リフレクション）:
+実測（15 タスクのデータセット + `gpt-5.4` ジャッジ + `gpt-5.4` リフレクション）:
 
 | --max-candidates | 所要時間 |
 |---:|---|
@@ -502,7 +526,7 @@ Results:
 </figure>
 <figure>
   <img src="images/Optimization_Candidate.png" alt="Optimization_Candidate" width="600" />
-  <figcaption><em>候補とベースラインの指示文の比較例。画像中の model は gpt-4.1-mini、agentVersion は 3 です。現在の azure.yaml がデプロイする gpt-5.4-mini や本文のバージョンとは異なります。</em></figcaption>
+  <figcaption><em>候補とベースラインの指示文の比較例。画像中の model は gpt-4.1-mini、agentVersion は 3 です。画像は本文の現在のモデルやバージョンとは異なる過去の実行例です。</em></figcaption>
 </figure>
 
 > **警告 — ツールは実際に呼ばれます**: 最適化中、データセットの全タスクがデプロイ済みエージェントを呼び出し、ツールが実際に実行されます。ツールが外部 API やデータベースを叩いたり状態を変更したりする場合は、最適化前にテスト用エンドポイントやモック実装に向けてください。
@@ -519,6 +543,15 @@ Results:
 azd ai agent optimize apply --candidate "<自分の実行で得た候補ID>"
 azd deploy travel-approval-agent --no-prompt
 ```
+
+ホステッドエージェントでは、候補のデプロイに **`optimize apply` と `azd deploy` の組み合わせを使用してください**。`azd ai agent optimize deploy --candidate <id>` は、現行の CLI 拡張では `code_configuration` を JSON として送信してしまい、次の 400 エラーになることがあります。
+
+```text
+code_configuration is not supported with application/json.
+Use multipart/form-data instead.
+```
+
+この場合は、候補をローカルに適用してから通常のコードデプロイを実行します。
 
 `apply` は勝者候補の構成をローカルの `.agent_configs/<candidate-id>/` に書き出し、デプロイされるコンテナがそれを読み込むよう **`azure.yaml` を更新**します。実行すると指示文の差分（ベースライン → 最適化後）も表示されます。
 
@@ -565,7 +598,7 @@ services:
 
 ```json
 {
-  "AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-5.4-mini",
+  "AZURE_AI_MODEL_DEPLOYMENT_NAME": "gpt-5.4",
   "OPTIMIZATION_CANDIDATE_ID": "cand_opt_6cf5e6b6a7324e0f82b6135320e1990f_0001",
   "OPTIMIZATION_LOCAL_DIR": ".agent_configs"
 }
@@ -573,7 +606,7 @@ services:
 
 `apply` + `deploy` を行うたびにエージェントのバージョンが上がります（ここでは v5 → v6）。デプロイ所要時間は実測 1m30s でした。
 
-> ローカルに適用せず、候補をそのまま新バージョンとして発行する `azd ai agent optimize deploy --candidate <id>` もあります。ただし `.agent_configs/` がローカルに残らないため、ワークショップでは `apply` + `azd deploy` を推奨します。
+> `azd ai agent optimize deploy --candidate <id>` による直接発行は、ホステッドエージェントの `code_configuration` で 400 になることがあります。本サンプルでは、候補をローカルに保存して再現可能にする `optimize apply` + `azd deploy` を使用してください。
 
 ---
 
@@ -669,7 +702,7 @@ Results:
 ### デプロイ・環境
 
 1. **`ai-project` の deployment とエージェントの環境変数の不一致。** `services.ai-project.deployments` は `azd provision` が*作成*するものを制御するだけです。実行時に*呼び出す*先を制御するのはエージェントサービスの `AZURE_AI_MODEL_DEPLOYMENT_NAME` です。両者を揃えておかないと、存在しないデプロイを呼び出すことになります。
-2. **`OPTIMIZATION_CANDIDATE_ID` がデプロイの振る舞いを決めます。** `azure.yaml` の `env:` に設定されている間、`azd deploy` は候補構成を出荷します。削除すれば、再度 apply することなくベースラインにロールバックできます。本リポジトリの `azure.yaml` はベースライン状態（`OPTIMIZATION_CANDIDATE_ID` なし）で配布しています。対応する候補フォルダーが無い状態で ID だけを残すと、黙ってベースラインで動作します。
+2. **`OPTIMIZATION_CANDIDATE_ID` がデプロイの振る舞いを決めます。** `azure.yaml` の `env:` に設定されている間、`azd deploy` は候補構成を出荷します。削除すれば、再度 apply することなくベースラインにロールバックできます。初期状態では `OPTIMIZATION_CANDIDATE_ID` を設定せず、候補を採用したときだけ `optimize apply` がこの値を追加します。対応する候補フォルダーが無い状態で ID だけを残すと、黙ってベースラインで動作します。
 
 > **権限 — `eval generate` が 401 になる場合**: 新規プロビジョニングでは、開発者に付与されるデータプレーンロールがプロジェクトスコープ（`Cognitive Services User`）だけになります。評価器の生成ジョブはアカウントの `/openai/v1/responses` を呼び出すため、`PermissionDenied ... lacks the required data action Microsoft.CognitiveServices/accounts/OpenAI/responses/write` で失敗します。Foundry アカウントのスコープで自分に **Foundry User**（旧名 Azure AI User）ロールを付与し、数分待ってから再実行してください。ロールを付与する権限がない場合は、管理者に依頼してください。
 >
@@ -690,7 +723,7 @@ Results:
 6. **リフレクションモデルは gpt-5 ファミリー**を選びます。mini 系はサポート外です。
 7. **評価モデルのサイレント障害。** 評価モデルのデプロイがないと、エラーなしで全スコアが 0 になります。実行前に必ずポータルで確認してください。
 8. **評価中にツールが実際に呼ばれます。** ツールが状態を変更する・呼び出しごとに課金される場合は、モック化するかテスト用エンドポイントに向けてください。
-9. **候補はドラフトバージョンです。** 最適化中に作られる候補は、`apply` + `deploy`（または `optimize deploy`）するまで稼働中のバージョンに影響しません。
+9. **候補はドラフトバージョンです。** 最適化中に作られる候補は、`optimize apply` + `azd deploy` するまで稼働中のバージョンに影響しません。ホステッドエージェントでは、直接の `optimize deploy` ではなくこの手順を使います。
 
 ### 結果の読み取り
 
