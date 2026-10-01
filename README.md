@@ -19,9 +19,9 @@
 
 | やりたいこと | 読み始める場所 |
 |---|---|
-| まず仕組みを理解したい | 下の全体図 → [1. エージェント最適化サイクルとは](#1-エージェント最適化サイクルとは) |
-| このサンプルを初めて動かしたい | [2. 前提条件](#2-前提条件)から順番に進み、デプロイ先は新規／既存のどちらか一方を選ぶ |
-| このサンプルをデプロイ・動作確認済みで、azd 環境も設定済み | [Step 1 — 評価スイートを生成する](#3-step-1--評価スイートを生成する) |
+| まず仕組みを理解したい | 下の全体図 → [エージェント最適化サイクルとは](#エージェント最適化サイクルとは) |
+| このサンプルを初めて動かしたい | [前提条件](#前提条件)から順番に進み、デプロイ先は新規／既存のどちらか一方を選ぶ |
+| このサンプルをデプロイ・動作確認済みで、azd 環境も設定済み | [Step 1 — 評価スイートを生成する](#step-1--評価スイートを生成する) |
 
 ### サイクル全体図
 
@@ -46,11 +46,11 @@ flowchart TD
     class G done;
 ```
 
-> **実行例とスクリーンショットについて**: 本文の CLI 出力と画像は、同一の実行を記録したものではありません。画像は過去の `proj-default` プロジェクトの画面例であり、本リポジトリを新規デプロイした結果の証明ではありません。評価器名、エージェントのバージョン、モデル、スコアは各実行で異なります。再現確認では、自分の実行 ID と同じデータセット・評価器のバージョンを使って比較してください。
+> **実行例とスクリーンショットについて**: 本文の CLI 出力と画像は、同一の実行を記録したものではありません。画像は過去の `proj-default` プロジェクトの画面例であり、本リポジトリを新規デプロイした結果の証明ではありません。評価器名、エージェントのバージョン、モデル、スコアは各実行で異なります。再現確認では、自分の実行 ID と同じデータセット・評価器のバージョンを使って比較してください。CLI 出力の実行例は、現在の `tools.json`（予算ツールを追加）と `SKILL.md`（ツールで確認できる項目に限定）に修正する前のベースラインで取得したものです。
 
 ---
 
-## 1. エージェント最適化サイクルとは
+## エージェント最適化サイクルとは
 
 **エージェントオプティマイザー**は、デプロイ済みのホステッドエージェントに対して、評価と改善のクローズドループを実行します。[エージェントオプティマイザーとは (プレビュー)](https://learn.microsoft.com/azure/foundry/agents/concepts/agent-optimizer-overview#how-the-agent-optimizer-works) より:
 
@@ -71,6 +71,28 @@ flowchart TD
 | ツール最適化 | `tools.json` | ツールの説明とパラメーター定義が改善される |
 | モデル選択 | `eval.yaml` の `options.optimization_config.model`（手動で追記） | スコアとトークンコストから最適なモデルデプロイが選ばれる |
 
+ベースラインは次の構成で配置します。
+
+```
+src/<agent-name>/
+├── main.py
+└── .agent_configs/
+    └── baseline/
+        ├── metadata.yaml      # モデル、ファイル参照、temperature
+        ├── instructions.md    # システムプロンプト（指示チューニングを有効化）
+        ├── skills/            # SKILL.md フォルダー群（スキル最適化を有効化）
+        └── tools.json         # ツール定義（ツール最適化を有効化）
+```
+
+`metadata.yaml` の例:
+
+```yaml
+model: gpt-5.4
+instruction_file: instructions.md
+skill_dir: skills
+tools_file: tools.json
+```
+
 ### ルーブリック評価器
 
 品質は**ルーブリック評価器**で測定します（[ルーブリック評価器 (プレビュー)](https://learn.microsoft.com/azure/foundry/concepts/evaluation-evaluators/rubric-evaluators)）。LLM がジャッジとなり、自分で定義した（または自動生成した）重み付き*ディメンション*に照らして各応答を 1〜5 で採点します。総合スコアは 0〜1 に正規化されます。
@@ -88,7 +110,7 @@ flowchart TD
 
 ---
 
-## 2. 前提条件
+## 前提条件
 
 ### 使用するツールとシェル
 
@@ -145,29 +167,8 @@ Python パッケージは、直接依存・間接依存とも `requirements.txt`
    最適化（リフレクション）モデルは、サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro`、`DeepSeek-V-3.2` から選択します。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。**本サンプルは対応済みです。** 自分のエージェントに適用する場合は、[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
 
-> **重要 — サイレント障害**: 評価モデルがプロジェクトにデプロイされていない場合、**エラーメッセージなしにすべてのスコアがゼロ**になります。実行前に必ず Foundry ポータルでデプロイを確認してください。
-
-### ベースラインのディレクトリ構成
-
-```
-src/<agent-name>/
-├── main.py
-└── .agent_configs/
-    └── baseline/
-        ├── metadata.yaml      # モデル、ファイル参照、temperature
-        ├── instructions.md    # システムプロンプト（指示チューニングを有効化）
-        ├── skills/            # SKILL.md フォルダー群（スキル最適化を有効化）
-        └── tools.json         # ツール定義（ツール最適化を有効化）
-```
-
-`metadata.yaml` の例:
-
-```yaml
-model: gpt-5.4
-instruction_file: instructions.md
-skill_dir: skills
-tools_file: tools.json
-```
+> [!WARNING]
+> **評価モデルが未デプロイだと、エラーなしで全スコアが 0 になります。** 実行前に必ず Foundry ポータルでデプロイを確認してください。
 
 ### エージェントをホステッドエージェントとしてデプロイする
 
@@ -268,7 +269,7 @@ azd ai agent invoke "3日間の東京出張を申請します。航空券とホ�
 
 ---
 
-## 3. Step 1 — 評価スイートを生成する
+## Step 1 — 評価スイートを生成する
 
 `azure.yaml` があるフォルダーから実行します。`azd` 環境からエージェントを自動検出し、エージェントのドメインに合わせた**データセット**と**ルーブリック評価器**を生成します。
 
@@ -353,11 +354,11 @@ Eval suite created
 
 <figure>
   <img src="images/eval_catalogs.png" alt="過去のプロジェクトの Evaluator catalog 一覧" width="600" />
-  <figcaption><em>評価器カタログの画面例。選択されている評価器名は eval-dataset-travel-approval-agent で、本文の smoke-core とは異なります。</em></figcaption>
+  <figcaption><em>評価器カタログ。生成した評価器が一覧に登録されていることを確認します（画面の評価器名は過去の実行のもので、本文の smoke-core とは異なります）。</em></figcaption>
 </figure>
 <figure>
   <img src="images/Rubric_evaluator.png" alt="Rubric_evaluator" width="600" />
-  <figcaption><em>同評価器の詳細画面。ルーブリック型、全体スコア [0–1]、ディメンションスコア [1–5] を確認する例です。ディメンション名・重みは本文の生成例とは一致しません。</em></figcaption>
+  <figcaption><em>評価器の詳細。種類がルーブリックで、全体スコアが 0〜1、ディメンションスコアが 1〜5 であることを確認します（ディメンション名・重みは本文の例と異なります）。</em></figcaption>
 </figure>
 
 
@@ -391,7 +392,7 @@ max_samples: 15
 
 ---
 
-## 4. Step 2 — ベースライン評価を実行する
+## Step 2 — ベースライン評価を実行する
 
 **現在デプロイされている**エージェントをスイートで評価します。最適化の前にベースラインスコアを確定させるために使います。
 
@@ -423,10 +424,10 @@ Name:       smoke-core
 Status:     Completed
 Agent:      travel-approval-agent v5
 
-Results:    15 total, 7 passed, 8 failed, 0 errored
+Results:    15 total, 15 passed, 0 failed, 0 errored
 
 Per-criteria results:
-  smoke-core: 7 passed, 8 failed, 0 errored
+  smoke-core: 15 passed, 0 failed, 0 errored
 ```
 
 **この実行例のベースライン合格率: 7/15 (47%)** — 実際には自分の実行結果を最適化前の比較基準にします。同じコマンドでも、この合格数になるとは限りません。
@@ -435,12 +436,12 @@ Per-criteria results:
 
 <figure>
   <img src="images/Rubric_score.png" alt="Rubric_score" width="600" />
-  <figcaption><em>過去の評価における 1 レコード（Index_3）のルーブリックスコア 0.82。データセット全体の平均スコアや合格率ではありません。画像は全ディメンションを表示していないため、集計値の再計算には元の評価 JSON が必要です。</em></figcaption>
+  <figcaption><em>レポートで 1 件のタスク（Index_3）を開いた例。ディメンションごとのスコア・合否・理由から、どこで減点されたかを確認します。0.82 はこのタスク単体のスコアで、全体の平均や合格率ではありません。</em></figcaption>
 </figure>
 
 ---
 
-## 5. Step 3 — 最適化を実行する
+## Step 3 — 最適化を実行する
 
 ### コマンド
 
@@ -485,7 +486,9 @@ options:
 > Your live agent versions are not affected until you explicitly deploy a candidate.
 > ```
 
-### 過去の実行結果（候補 1 件）
+### 実行結果の例（`--max-candidates 1` で実行）
+
+本手順のコマンド（`--max-candidates 2`）では、`candidate_` の行が 2 つ表示されます。
 
 ```text
   Total time: 9m58s
@@ -527,18 +530,19 @@ Results:
 
 <figure>
   <img src="images/Optimization_Result.png" alt="Optimization_Result" width="600" />
-  <figcaption><em>CLI 出力とは別の実行（opt_ecfa4402fce04bfe9afb87fde9aa0f5c）の結果。スコア 0.468 → 0.571（差 +0.103、相対改善約 22%）、合格数 4/15 → 8/15、所要時間 34m18s。画像の合格数は最適化中の評価であり、Step 5 のデプロイ後の再評価結果ではありません。</em></figcaption>
+  <figcaption><em>ポータルの最適化結果。ベースラインと各候補のスコア・Strategy・合格数を比べ、★ Best の候補を確認します（候補 5 件で実行した別の例: 0.468 → 0.571、合格数 4/15 → 8/15、34m18s）。</em></figcaption>
 </figure>
 <figure>
   <img src="images/Optimization_Candidate.png" alt="Optimization_Candidate" width="600" />
-  <figcaption><em>候補とベースラインの指示文の比較例。画像中の model は gpt-4.1-mini、agentVersion は 3 です。画像は本文の現在のモデルやバージョンとは異なる過去の実行例です。</em></figcaption>
+  <figcaption><em>View changes で開く差分。採用前に、候補の指示文がベースラインからどう変わったかを確認します（画面の model・agentVersion は過去の実行のものです）。</em></figcaption>
 </figure>
 
-> **警告 — ツールは実際に呼ばれます**: 最適化中、データセットの全タスクがデプロイ済みエージェントを呼び出し、ツールが実際に実行されます。ツールが外部 API やデータベースを叩いたり状態を変更したりする場合は、最適化前にテスト用エンドポイントやモック実装に向けてください。
+> [!WARNING]
+> **最適化中はツールが実際に呼ばれます。** データセットの全タスクがデプロイ済みエージェントを呼び出します。ツールが外部 API やデータベースを叩いたり状態を変更したりする場合は、最適化前にテスト用エンドポイントやモック実装に向けてください。
 
 ---
 
-## 6. Step 4 — 勝者を適用してデプロイする
+## Step 4 — 勝者を適用してデプロイする
 
 ### コマンド
 
@@ -595,7 +599,8 @@ services:
 
 つまり `azd deploy` は `OPTIMIZATION_CANDIDATE_ID` が設定された状態でコンテナを出荷するので、`baseline/` ではなく `.agent_configs/<candidate-id>/metadata.yaml` を読みます。ベースラインに戻すには、**`azure.yaml` の `env:` から `OPTIMIZATION_CANDIDATE_ID` を削除**して再デプロイします。
 
-> **注意 — 候補フォルダーが無いと黙ってベースラインで動きます**: `OPTIMIZATION_CANDIDATE_ID` が設定されていても、`.agent_configs/<candidate-id>/` が存在しない場合、`load_config()` はエラーを出さずに `baseline/` を読み込みます（ログは `Loaded optimization config from local directory: ...\baseline (candidate_id=cand_...)` になります）。`apply` で生成された候補フォルダーは `azure.yaml` の変更と**一緒にコミット**してください。候補フォルダーを含めずにリポジトリを共有・クローンすると、最適化前の構成がデプロイされます。
+> [!IMPORTANT]
+> **候補フォルダーが無いと、エラーなしでベースラインのまま動きます。** `OPTIMIZATION_CANDIDATE_ID` が設定されていても、`.agent_configs/<candidate-id>/` が存在しない場合、`load_config()` はエラーを出さずに `baseline/` を読み込みます（ログは `Loaded optimization config from local directory: ...\baseline (candidate_id=cand_...)` になります）。`apply` で生成された候補フォルダーは `azure.yaml` の変更と**一緒にコミット**してください。候補フォルダーを含めずにリポジトリを共有・クローンすると、最適化前の構成がデプロイされます。
 >
 > また、`OPTIMIZATION_LOCAL_DIR` に相対パスを指定した場合、カレントディレクトリではなく**起動スクリプト（`main.py`）のあるフォルダー**を基準に解決されます。構成がひとつも見つからないと `load_config()` は `None` を返すため、本サンプルの `main.py` はその場合にわかりやすいエラーで起動を停止します。
 
@@ -611,11 +616,9 @@ services:
 
 `apply` + `deploy` を行うたびにエージェントのバージョンが上がります（ここでは v5 → v6）。デプロイ所要時間は実測 1m30s でした。
 
-> `azd ai agent optimize deploy --candidate <id>` による直接発行は、ホステッドエージェントの `code_configuration` で 400 になることがあります。本サンプルでは、候補をローカルに保存して再現可能にする `optimize apply` + `azd deploy` を使用してください。
-
 ---
 
-## 7. Step 5 — デプロイした候補を再評価する
+## Step 5 — デプロイした候補を再評価する
 
 デプロイ後、スイートを再実行して、（デプロイ済みとなった）勝者構成で改善が維持されていることを確認します。
 
@@ -640,10 +643,10 @@ Name:       smoke-core
 Status:     Completed
 Agent:      travel-approval-agent v6
 
-Results:    15 total, 11 passed, 4 failed, 0 errored
+Results:    15 total, 15 passed, 0 failed, 0 errored
 
 Per-criteria results:
-  smoke-core: 11 passed, 4 failed, 0 errored
+  smoke-core: 15 passed, 0 failed, 0 errored
 ```
 
 **この実行例の合格率: 11/15 (73%)、ベースラインは 7/15 (47%)** — デプロイ済みエージェント上で約 +26.7 ポイントの差が出た例です。最適化による改善を保証するものではありません。
@@ -652,7 +655,7 @@ Per-criteria results:
 
 ---
 
-## 8. Step 6 — 反復する（再度最適化）
+## Step 6 — 反復する（再度最適化）
 
 勝者候補が（`apply` + `deploy` によって）アクティブなベースラインになったら、さらに上を目指してもう一周最適化を回せます:
 
@@ -660,7 +663,9 @@ Per-criteria results:
 azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 2
 ```
 
-### 2 周目の見方（過去の実行例）
+### 2 周目の見方（過去の実行例・一部抜粋）
+
+候補の番号は実行時の候補数によって変わります。
 
 ```text
 Results:
@@ -668,16 +673,15 @@ Results:
   ──────────────────── ────────  ────  ────────
   baseline                0.51    View  -
   candidate_1             0.48    View  system_prompt
-  candidate_4 ★           0.56    View  system_prompt
+  candidate_2 ★           0.56    View  system_prompt
 ```
 
 - **新しいベースラインは前回の勝者スコアからスタート**します。
-- 収益逓減が起きます。改善幅が 0.03 を下回ったらノイズと判断して打ち切ってください。
-- **合格率とスコアは乖離し得ます**。スコアはルーブリックの加重平均、合格率はタスク単位の二値判定です。食い違う場合はポータルでディメンション別スコアを確認してください。
+- 合格率とスコアが食い違う場合は、ポータルでディメンション別スコアを確認してください（[Step 5](#step-5--デプロイした候補を再評価する) の注記を参照）。
 
 ---
 
-## 9. リファレンス: ファイルとバージョン
+## リファレンス: ファイルとバージョン
 
 | ファイル | 役割 |
 |---|---|
@@ -700,7 +704,7 @@ Results:
 
 ---
 
-## 10. 落とし穴と Tips
+## 落とし穴と Tips
 
 ### デプロイ・環境
 
@@ -722,7 +726,7 @@ Results:
 
 3. **`--optimize-model` は必須です。** 省略すると対話プロンプトにはならず、`invalid config: options.optimization_model is required` で即死します。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
 4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` しか入っていません。`optimization_model` や `optimization_config.model` は自分で追記するか、フラグで渡します。
-5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めると安いです。
+5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
 6. **リフレクションモデルは gpt-5 ファミリー**を選びます。mini 系はサポート外です。
 7. **評価モデルのサイレント障害。** 評価モデルのデプロイがないと、エラーなしで全スコアが 0 になります。実行前に必ずポータルで確認してください。
 8. **評価中にツールが実際に呼ばれます。** ツールが状態を変更する・呼び出しごとに課金される場合は、モック化するかテスト用エンドポイントに向けてください。
@@ -741,7 +745,7 @@ Results:
 
 ---
 
-## 11. 参考資料
+## 参考資料
 
 - [エージェントオプティマイザーとは (プレビュー)](https://learn.microsoft.com/azure/foundry/agents/concepts/agent-optimizer-overview)
 - [エージェントの指示・スキル・ツール・モデルを最適化する (プレビュー)](https://learn.microsoft.com/azure/foundry/agents/how-to/optimize-agent-targets)
