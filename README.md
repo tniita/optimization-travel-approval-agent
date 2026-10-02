@@ -46,7 +46,7 @@ flowchart TD
     class G done;
 ```
 
-> **実行例とスクリーンショットについて**: 本文の CLI 出力と画像は、同一の実行を記録したものではありません。画像は過去の `proj-default` プロジェクトの画面例であり、本リポジトリを新規デプロイした結果の証明ではありません。評価器名、エージェントのバージョン、モデル、スコアは各実行で異なります。再現確認では、自分の実行 ID と同じデータセット・評価器のバージョンを使って比較してください。CLI 出力の実行例は、現在の `tools.json`（予算ツールを追加）と `SKILL.md`（ツールで確認できる項目に限定）に修正する前のベースラインで取得したものです。
+> **実行例とスクリーンショットについて**: Step 1〜5 の CLI 出力は、同じ一連の実行（エージェント v5 のベースライン評価 → 最適化 → v6 へのデプロイ → 再評価）を記録したものです。画像はこれとは別の実行で、過去の `proj-default` プロジェクトの画面例であり、本リポジトリを新規デプロイした結果の証明ではありません。評価器名、エージェントのバージョン、モデル、スコアは各実行で異なります。再現確認では、自分の実行 ID と同じデータセット・評価器のバージョンを使って比較してください。CLI 出力の実行例は、現在の `tools.json`（予算ツールを追加）と `SKILL.md`（ツールで確認できる項目に限定）に修正する前のベースラインで取得したものです。
 
 ---
 
@@ -164,7 +164,7 @@ Python パッケージは、直接依存・間接依存とも `requirements.txt`
    - **`gpt-5.4-mini`** — エージェントが応答に使う既定モデル（`metadata.yaml` の `model`）。
    - **`gpt-5.4`** — 評価（ジャッジ）と最適化（リフレクション）に使うモデル。[モデル選択](#モデル選択を有効にする)では、エージェントのモデル候補にもなります。評価に使うモデルは Chat completion model であること。
    - **`gpt-5.5`** — 別のリフレクションモデルを試すための代替モデル。本手順のコマンド例では使いません。
-   - **`gpt-6-astra`** — [モデル選択](#モデル選択を有効にする)の `model_search_space` に追加して比較できる、エージェント用の代替モデル。本手順のコマンド例では使いません。
+   - **`gpt-6.1-sol`** — [モデル選択](#モデル選択を有効にする)の `model_search_space` に追加して比較できる、エージェント用の代替モデル。本手順のコマンド例では使いません。
 
    最適化（リフレクション）モデルは、サポート対象の `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro`、`DeepSeek-V-3.2` から選択します。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。**本サンプルは対応済みです。** 自分のエージェントに適用する場合は、[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
@@ -193,7 +193,7 @@ azd auth login
 
 ##### A. Foundry プロジェクトを新規作成する
 
-リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4-mini`（エージェントの既定モデル）、`gpt-5.4`（評価・最適化用）、`gpt-5.5`（代替モデル）、`gpt-6-astra`（モデル選択用の代替モデル）のデプロイも作成されます。
+リソースを作成できる権限と、対象リージョンのモデルクォータが必要です。本リポジトリには `infra/` フォルダーがありません。`azure.yaml` の `infra.provider: microsoft.foundry` により、azd 拡張機能の組み込みテンプレートでリソースグループ、Foundry（AI Services）アカウント、プロジェクトが作成されます。あわせて `ai-project.deployments` に定義した `gpt-5.4-mini`（エージェントの既定モデル）、`gpt-5.4`（評価・最適化用）、`gpt-5.5`（代替モデル）、`gpt-6.1-sol`（モデル選択用の代替モデル）のデプロイも作成されます。
 
 ```bash
 azd env new <環境名> --subscription <sub> --location <region>   # 例: eastus2
@@ -206,7 +206,7 @@ azd provision
 完了したら **B は実行せず**、「[2. デプロイする](#2-デプロイする)」へ進みます。
 
 > [!NOTE]
-> **オプション — Claude モデル**: `ai-project.deployments` には、[モデル選択](#claude-を候補に加える任意)で使える `claude-sonnet-5-5`、`claude-opus-5-5` も定義しています。Claude のデプロイには Anthropic の利用規約への同意（組織名・国・業種）が必要ですが、azd がこの情報を渡せるかは確認できていません。`azd provision` が Claude のデプロイで失敗する場合や Claude を使わない場合は、`azure.yaml` から 2 つの Claude の定義を削除してから実行し、必要なら Foundry ポータルからデプロイしてください。
+> **オプション — Claude モデル**: 既定の `azure.yaml` には Claude のデプロイを含めていません。Claude のデプロイには Anthropic の利用規約への同意（組織名・国・業種）が必要で、azd でそのまま作成できるかを確認できていないためです。Claude をモデル選択の候補にする場合は、プロビジョニング後に「[Claude を候補に加える（任意）](#claude-を候補に加える任意)」の手順で追加してください。
 
 > 旧版にあった `infra/*.bicep` は、現行の azd（1.34 系）では `uses the removed generic Connection provisioning contract` エラーで `azd provision` が失敗するため削除しました。接続が必要な場合は、`azure.yaml` に `host: azure.ai.connection` のサービスとして宣言します。
 
@@ -264,7 +264,7 @@ azd deploy travel-approval-agent --no-prompt
 成功すると新しいバージョンが発行され、Playground URL と Responses エンドポイントが表示されます。
 
 > [!TIP]
-> **オプション — エージェントだけをデプロイする**: サービス名を付けた `azd deploy travel-approval-agent` はホステッドエージェントのコードだけをデプロイし、モデルデプロイの作成や変更は行いません。`azure.yaml` の `ai-project.deployments` と実際のモデルデプロイが異なっていても（Claude の定義が未作成など）、そのままエージェントを更新できます。モデルデプロイを作る `azd provision` と、それを含む `azd up` は実行しないでください。
+> **オプション — エージェントだけをデプロイする**: サービス名を付けた `azd deploy travel-approval-agent` はホステッドエージェントのコードだけをデプロイし、モデルデプロイの作成や変更は行いません。`azure.yaml` の `ai-project.deployments` と実際のモデルデプロイが異なっていても（ポータルで追加した Claude が `azure.yaml` に無いなど）、そのままエージェントを更新できます。モデルデプロイを作る `azd provision` と、それを含む `azd up` は実行しないでください。
 
 #### 3. 動作確認する
 
@@ -421,26 +421,24 @@ Resolving eval context...
   Resolving Foundry project endpoint...
   Updated eval.yaml with current environment values
 Eval run started
-   Eval: eval_f5540ab7ed83464e900999ff71dd1925
-   Run:  evalrun_041ffccac64745f5b79ccc38ed89bb10
+   Eval: eval_5162dae33dd248eea2563c3f0f09b952
+   Run:  evalrun_5b5f28ad8bf3417e9f455ce6df5c4d5c
    Report: https://ai.azure.com/...
   (✓) Done  Eval run  (2m 6s)
 
-Eval:       eval_f5540ab7ed83464e900999ff71dd1925
-Run:        evalrun_041ffccac64745f5b79ccc38ed89bb10
-Name:       travel-approval-agent
+Eval:       eval_5162dae33dd248eea2563c3f0f09b952
+Run:        evalrun_5b5f28ad8bf3417e9f455ce6df5c4d5c
+Name:       smoke-core
 Status:     Completed
-Created:    2026-10-02 01:25:28 UTC
-Created by: Takuya Niita
 Agent:      travel-approval-agent v5
 
-Results:    15 total, 5 passed, 10 failed, 0 errored
+Results:    15 total, 7 passed, 8 failed, 0 errored
 
 Per-criteria results:
-  smoke-core: 5 passed, 10 failed, 0 errored
+  smoke-core: 7 passed, 8 failed, 0 errored
 ```
 
-**この実行例のベースライン合格率: 5/15 (33%)** — 実際には自分の実行結果を最適化前の比較基準にします。同じコマンドでも、この合格数になるとは限りません。
+**この実行例のベースライン合格率: 7/15 (47%)** — 実際には自分の実行結果を最適化前の比較基準にします。同じコマンドでも、この合格数になるとは限りません。
 
 タスク別・ディメンション別のスコアを掛け合わせて見るには、Foundry ポータルで **Report** の URL を開いてください。過去の実行は `azd ai agent eval list` / `azd ai agent eval show` でも確認できます。
 
@@ -498,7 +496,29 @@ options:
 
 エージェントのモデルには Claude も指定できます。Foundry の Claude は OpenAI 互換の API ではなく Anthropic の Messages API で呼び出します。本サンプルの `main.py` は、モデル名が `claude` で始まる場合に `AnthropicFoundryClient` に切り替えるため、コードの変更は不要です。
 
-1. エージェントと同じ Foundry アカウントに Claude をデプロイします。`azure.yaml` には `claude-sonnet-5-5`、`claude-opus-5-5` を定義していますが、Claude のデプロイには Azure Marketplace の Anthropic の利用規約への同意（組織名・国・業種の入力）が必要です。`azd provision` で作成されない場合は、Foundry ポータルのモデルカタログからデプロイしてください（[Claude モデルをデプロイする](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/use-foundry-models-claude)）。デプロイ名は `claude` で始めます。
+1. エージェントと同じ Foundry アカウントに Claude をデプロイします。Claude のデプロイには Azure Marketplace の Anthropic の利用規約への同意（組織名・国・業種の入力）が必要なため、Foundry ポータルのモデルカタログからデプロイしてください（[Claude モデルをデプロイする](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/use-foundry-models-claude)）。デプロイ名は `claude` で始めます。
+
+   azd で作成したい場合は、`azure.yaml` の `ai-project.deployments` に次を追加して `azd provision` を実行します。同意情報が無いことでデプロイに失敗した場合は、追加した定義を削除し、ポータルからデプロイしてください。
+
+   ```yaml
+               - model:
+                   format: Anthropic
+                   name: claude-sonnet-5-5
+                   version: "2"
+                 name: claude-sonnet-5-5
+                 sku:
+                   capacity: 10
+                   name: GlobalStandard
+               - model:
+                   format: Anthropic
+                   name: claude-opus-5-5
+                   version: "2"
+                 name: claude-opus-5-5
+                 sku:
+                   capacity: 10
+                   name: GlobalStandard
+   ```
+
 2. `eval.yaml` の `model_search_space` にデプロイ名を追加します。
 
    ```yaml
@@ -689,7 +709,7 @@ Per-criteria results:
   smoke-core: 11 passed, 4 failed, 0 errored
 ```
 
-**この実行例の合格率: 11/15 (73%)、同じ検証でのベースラインは 7/15 (47%)** — デプロイ済みエージェント上で約 +26.7 ポイントの差が出た例です（Step 2 の出力例は別の実行のため、Eval ID と合格数が異なります）。最適化による改善を保証するものではありません。
+**この実行例の合格率: 11/15 (73%)、Step 2 のベースラインは 7/15 (47%)** — 同じ評価（`eval_5162...`）で、デプロイ済みエージェント上で約 +26.7 ポイントの差が出た例です。最適化による改善を保証するものではありません。
 
 > オプティマイザーが報告したスコア（0.391 → 0.529）と、この合格率（47% → 73%）は別の指標です。前者はルーブリックの加重平均、後者はタスク単位の二値判定です。方向の一致だけでは改善を断定できません。同じ評価条件での再実行や、最適化に使っていない検証データでも確認してください。
 
@@ -703,20 +723,12 @@ Per-criteria results:
 azd ai agent optimize --optimize-model gpt-5.4 --max-candidates 2
 ```
 
-### 2 周目の見方（過去の実行例・一部抜粋）
+### 2 周目の見方
 
-候補の番号は実行時の候補数によって変わります。
+出力の形式は [Step 3](#step-3--最適化を実行する) と同じです。
 
-```text
-Results:
-  Candidate               Score  Eval  Strategy
-  ──────────────────── ────────  ────  ────────
-  baseline                0.51    View  -
-  candidate_1             0.48    View  system_prompt
-  candidate_2 ★           0.56    View  system_prompt
-```
-
-- **新しいベースラインは前回の勝者スコアからスタート**します。
+- **新しいベースラインは前回の勝者構成です。** ベースラインも改めて評価されるため、スコアは前回の勝者スコア（この実行例では 0.529）と完全には一致しません。
+- 改善幅が 0.03 を下回る場合はノイズと判断し、打ち切りを検討してください（[スコア変化の解釈](#スコア変化の解釈)）。
 - 合格率とスコアが食い違う場合は、ポータルでディメンション別スコアを確認してください（[Step 5](#step-5--デプロイした候補を再評価する) の注記を参照）。
 
 ---

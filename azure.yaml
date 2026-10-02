@@ -18,9 +18,9 @@ services:
                 name: GlobalStandard
             - model:
                 format: OpenAI
-                name: gpt-6-astra
-                version: "2026-09-03"
-              name: gpt-6-astra
+                name: gpt-6.1-sol
+                version: "2026-09-29"
+              name: gpt-6.1-sol
               sku:
                 capacity: 250
                 name: GlobalStandard
@@ -39,22 +39,6 @@ services:
               name: gpt-5.4
               sku:
                 capacity: 1000
-                name: GlobalStandard
-            - model:
-                format: Anthropic
-                name: claude-sonnet-5-5
-                version: "2"
-              name: claude-sonnet-5-5
-              sku:
-                capacity: 10
-                name: GlobalStandard
-            - model:
-                format: Anthropic
-                name: claude-opus-5-5
-                version: "2"
-              name: claude-opus-5-5
-              sku:
-                capacity: 10
                 name: GlobalStandard
     travel-approval-agent:
         project: src/travel-approval-agent
