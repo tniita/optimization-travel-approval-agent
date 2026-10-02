@@ -205,7 +205,7 @@ azd provision
 完了したら **B は実行せず**、「[2. デプロイする](#2-デプロイする)」へ進みます。
 
 > [!NOTE]
-> **オプション — Claude モデル**: `ai-project.deployments` には、[モデル選択](#claude-を候補に加える任意)で使える `claude-sonnet-5-5`、`claude-opus-5-5` も定義しています。Claude のデプロイには Anthropic の利用規約への同意（組織名・国・業種）が必要ですが、azd がこの情報を渡せるかは確認できていません。`azd provision` が Claude のデプロイで失敗する場合や Claude を使わない場合は、`azure.yaml` から 3 つの Claude の定義を削除してから実行し、必要なら Foundry ポータルからデプロイしてください。
+> **オプション — Claude モデル**: `ai-project.deployments` には、[モデル選択](#claude-を候補に加える任意)で使える `claude-sonnet-5-5`、`claude-opus-5-5` も定義しています。Claude のデプロイには Anthropic の利用規約への同意（組織名・国・業種）が必要ですが、azd がこの情報を渡せるかは確認できていません。`azd provision` が Claude のデプロイで失敗する場合や Claude を使わない場合は、`azure.yaml` から 2 つの Claude の定義を削除してから実行し、必要なら Foundry ポータルからデプロイしてください。
 
 > 旧版にあった `infra/*.bicep` は、現行の azd（1.34 系）では `uses the removed generic Connection provisioning contract` エラーで `azd provision` が失敗するため削除しました。接続が必要な場合は、`azure.yaml` に `host: azure.ai.connection` のサービスとして宣言します。
 
@@ -420,8 +420,8 @@ Resolving eval context...
   Resolving Foundry project endpoint...
   Updated eval.yaml with current environment values
 Eval run started
-   Eval: eval_5162dae33dd248eea2563c3f0f09b952
-   Run:  evalrun_5b5f28ad8bf3417e9f455ce6df5c4d5c
+   Eval: eval_f5540ab7ed83464e900999ff71dd1925
+   Run:  evalrun_041ffccac64745f5b79ccc38ed89bb10
    Report: https://ai.azure.com/...
   (✓) Done  Eval run  (2m 6s)
 
@@ -439,7 +439,7 @@ Per-criteria results:
   smoke-core: 5 passed, 10 failed, 0 errored
 ```
 
-**この実行例のベースライン合格率: 5/15 (47%)** — 実際には自分の実行結果を最適化前の比較基準にします。同じコマンドでも、この合格数になるとは限りません。
+**この実行例のベースライン合格率: 5/15 (33%)** — 実際には自分の実行結果を最適化前の比較基準にします。同じコマンドでも、この合格数になるとは限りません。
 
 タスク別・ディメンション別のスコアを掛け合わせて見るには、Foundry ポータルで **Report** の URL を開いてください。過去の実行は `azd ai agent eval list` / `azd ai agent eval show` でも確認できます。
 
@@ -497,7 +497,7 @@ options:
 
 エージェントのモデルには Claude も指定できます。Foundry の Claude は OpenAI 互換の API ではなく Anthropic の Messages API で呼び出します。本サンプルの `main.py` は、モデル名が `claude` で始まる場合に `AnthropicFoundryClient` に切り替えるため、コードの変更は不要です。
 
-1. エージェントと同じ Foundry アカウントに Claude をデプロイします。`azure.yaml` には `claude-sonnet-5-5`、`claude-opus-5-5`　を定義していますが、Claude のデプロイには Azure Marketplace の Anthropic の利用規約への同意（組織名・国・業種の入力）が必要です。`azd provision` で作成されない場合は、Foundry ポータルのモデルカタログからデプロイしてください（[Claude モデルをデプロイする](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/use-foundry-models-claude)）。デプロイ名は `claude` で始めます。
+1. エージェントと同じ Foundry アカウントに Claude をデプロイします。`azure.yaml` には `claude-sonnet-5-5`、`claude-opus-5-5` を定義していますが、Claude のデプロイには Azure Marketplace の Anthropic の利用規約への同意（組織名・国・業種の入力）が必要です。`azd provision` で作成されない場合は、Foundry ポータルのモデルカタログからデプロイしてください（[Claude モデルをデプロイする](https://learn.microsoft.com/azure/foundry/foundry-models/how-to/use-foundry-models-claude)）。デプロイ名は `claude` で始めます。
 2. `eval.yaml` の `model_search_space` にデプロイ名を追加します。
 
    ```yaml
@@ -682,13 +682,13 @@ Name:       smoke-core
 Status:     Completed
 Agent:      travel-approval-agent v6
 
-Results:    15 total, 15 passed, 0 failed, 0 errored
+Results:    15 total, 11 passed, 4 failed, 0 errored
 
 Per-criteria results:
-  smoke-core: 15 passed, 0 failed, 0 errored
+  smoke-core: 11 passed, 4 failed, 0 errored
 ```
 
-**この実行例の合格率: 11/15 (73%)、ベースラインは 7/15 (47%)** — デプロイ済みエージェント上で約 +26.7 ポイントの差が出た例です。最適化による改善を保証するものではありません。
+**この実行例の合格率: 11/15 (73%)、同じ検証でのベースラインは 7/15 (47%)** — デプロイ済みエージェント上で約 +26.7 ポイントの差が出た例です（Step 2 の出力例は別の実行のため、Eval ID と合格数が異なります）。最適化による改善を保証するものではありません。
 
 > オプティマイザーが報告したスコア（0.391 → 0.529）と、この合格率（47% → 73%）は別の指標です。前者はルーブリックの加重平均、後者はタスク単位の二値判定です。方向の一致だけでは改善を断定できません。同じ評価条件での再実行や、最適化に使っていない検証データでも確認してください。
 
@@ -766,7 +766,7 @@ Results:
 3. **`--optimize-model` は必須です。** 省略すると対話プロンプトにはならず、`invalid config: options.optimization_model is required` で即死します。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
 4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` しか入っていません。`optimization_model` や `optimization_config.model_search_space` は自分で追記するか、フラグで渡します。
 5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
-6. **リフレクションモデルは gpt-5 ファミリー**を選びます。mini 系はサポート外です。
+6. **リフレクションモデルはサポート対象から選びます**（[前提条件](#step-1-の開始までに揃えるもの)の一覧を参照）。`gpt-5.4-mini` などの mini 系はサポート外です。
 7. **評価モデルのサイレント障害。** 評価モデルのデプロイがないと、エラーなしで全スコアが 0 になります。実行前に必ずポータルで確認してください。
 8. **評価中にツールが実際に呼ばれます。** ツールが状態を変更する・呼び出しごとに課金される場合は、モック化するかテスト用エンドポイントに向けてください。
 9. **候補はドラフトバージョンです。** 最適化中に作られる候補は、`optimize apply` + `azd deploy` するまで稼働中のバージョンに影響しません。ホステッドエージェントでは、直接の `optimize deploy` ではなくこの手順を使います。
