@@ -18,17 +18,17 @@ services:
                 name: GlobalStandard
             - model:
                 format: OpenAI
-                name: gpt-5.6-sol
-                version: "2026-07-09"
-              name: gpt-5.6-sol
+                name: gpt-6.1-sol
+                version: "2026-09-29"
+              name: gpt-6.1-sol
               sku:
-                capacity: 50
+                capacity: 250
                 name: GlobalStandard
             - model:
                 format: OpenAI
-                name: gpt-6-astra
-                version: "2026-09-03"
-              name: gpt-6-astra
+                name: gpt-5.4-mini
+                version: "2026-03-17"
+              name: gpt-5.4-mini
               sku:
                 capacity: 250
                 name: GlobalStandard
@@ -40,22 +40,6 @@ services:
               sku:
                 capacity: 1000
                 name: GlobalStandard
-            - model:
-                format: Anthropic
-                name: claude-sonnet-5-5
-                version: "2"
-              name: claude-sonnet-5-5
-              sku:
-                capacity: 10
-                name: GlobalStandard
-            - model:
-                format: Anthropic
-                name: claude-opus-5-5
-                version: "2"
-              name: claude-opus-5-5
-              sku:
-                capacity: 10
-                name: GlobalStandard
     travel-approval-agent:
         project: src/travel-approval-agent
         host: azure.ai.agent
@@ -64,7 +48,6 @@ services:
             - ai-project
         env:
             AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
-            OPTIMIZATION_CANDIDATE_ID: cand_opt_8d2b4dc7f8bf49699d9c69d224fb9646_0003
             OPTIMIZATION_LOCAL_DIR: .agent_configs
         codeConfiguration:
             dependencyResolution: remote_build
