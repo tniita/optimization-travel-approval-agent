@@ -425,19 +425,21 @@ Eval run started
    Report: https://ai.azure.com/...
   (✓) Done  Eval run  (2m 6s)
 
-Eval:       eval_5162dae33dd248eea2563c3f0f09b952
-Run:        evalrun_5b5f28ad8bf3417e9f455ce6df5c4d5c
-Name:       smoke-core
+Eval:       eval_f5540ab7ed83464e900999ff71dd1925
+Run:        evalrun_041ffccac64745f5b79ccc38ed89bb10
+Name:       travel-approval-agent
 Status:     Completed
+Created:    2026-10-02 01:25:28 UTC
+Created by: Takuya Niita
 Agent:      travel-approval-agent v5
 
-Results:    15 total, 15 passed, 0 failed, 0 errored
+Results:    15 total, 5 passed, 10 failed, 0 errored
 
 Per-criteria results:
-  smoke-core: 15 passed, 0 failed, 0 errored
+  smoke-core: 5 passed, 10 failed, 0 errored
 ```
 
-**この実行例のベースライン合格率: 7/15 (47%)** — 実際には自分の実行結果を最適化前の比較基準にします。同じコマンドでも、この合格数になるとは限りません。
+**この実行例のベースライン合格率: 5/15 (47%)** — 実際には自分の実行結果を最適化前の比較基準にします。同じコマンドでも、この合格数になるとは限りません。
 
 タスク別・ディメンション別のスコアを掛け合わせて見るには、Foundry ポータルで **Report** の URL を開いてください。過去の実行は `azd ai agent eval list` / `azd ai agent eval show` でも確認できます。
 
@@ -501,7 +503,6 @@ options:
    ```yaml
        optimization_config:
            model_search_space:
-               - gpt-5.4-mini
                - gpt-5.4
                - claude-sonnet-5-5
    ```

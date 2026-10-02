@@ -15,6 +15,9 @@ from azure.ai.agentserver.optimization import load_config, load_skills_from_dir
 
 logger = logging.getLogger(__name__)
 
+# With thinking on, agent-framework-anthropic 1.0.0b260910 sometimes drops Claude's final answer.
+CLAUDE_THINKING_OFF = {"claude-sonnet-5-5": {"type": "between_tools"}}
+
 
 @tool(approval_mode="never_require")
 def lookup_travel_policy() -> str:
@@ -100,12 +103,19 @@ def main():
         model, os.environ["FOUNDRY_PROJECT_ENDPOINT"], DefaultAzureCredential()
     )
 
+    if isinstance(client, FoundryChatClient):
+        default_options = {"store": False}
+    elif model in CLAUDE_THINKING_OFF:
+        default_options = {"thinking": CLAUDE_THINKING_OFF[model]}
+    else:
+        default_options = {}
+
     agent = Agent(
         client=client,
         instructions=instructions,
         tools=tools,
         # The Anthropic Messages API rejects the OpenAI-only `store` option.
-        default_options={"store": False} if isinstance(client, FoundryChatClient) else {},
+        default_options=default_options,
     )
 
     server = ResponsesHostServer(agent)
