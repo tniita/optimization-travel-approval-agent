@@ -15,8 +15,8 @@ from azure.ai.agentserver.optimization import load_config, load_skills_from_dir
 
 logger = logging.getLogger(__name__)
 
-# With thinking on, agent-framework-anthropic 1.0.0b260910 sometimes drops Claude's final answer.
-CLAUDE_THINKING_OFF = {"claude-sonnet-5-5": {"type": "between_tools"}}
+# The Anthropic client defaults to 1024, which thinking can exhaust before the final answer.
+CLAUDE_MAX_TOKENS = 16000
 
 
 @tool(approval_mode="never_require")
@@ -105,10 +105,8 @@ def main():
 
     if isinstance(client, FoundryChatClient):
         default_options = {"store": False}
-    elif model in CLAUDE_THINKING_OFF:
-        default_options = {"thinking": CLAUDE_THINKING_OFF[model]}
     else:
-        default_options = {}
+        default_options = {"max_tokens": CLAUDE_MAX_TOKENS}
 
     agent = Agent(
         client=client,
