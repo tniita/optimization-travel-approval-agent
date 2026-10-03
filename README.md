@@ -140,7 +140,7 @@ Windows の **Git Bash** では、使用するターミナルで次も実行し�
 export MSYS_NO_PATHCONV=1
 ```
 
-> `azd ext list --installed` の `STATUS` が `Incompatible` の場合は、azd 本体のバージョンが拡張機能の要求を満たしていません。azd 1.34.2 に更新すると解消します。
+> `azd ext list --installed` の `STATUS` が `Incompatible` の場合は、azd 本体のバージョンが拡張機能の要求を満たしていません。azd を最新版に更新すると解消します（本手順は azd 1.34.2 で確認）。
 
 ### リポジトリの取得と作業場所
 
@@ -486,11 +486,16 @@ options:
 | `optimization_model` | 候補を生成するリフレクションモデル。書いておくと `--optimize-model` を省略できます |
 | `optimization_config.model_search_space` | エージェントのモデル候補。ここに書いたモデルでも同じデータセットを評価し、スコアとトークンコストで順位付けします |
 
-- リストには現在のモデル（`gpt-5.4-mini`）も含めていますが、ベースラインと同じなので候補からは自動的に除外されます。実際に比較されるのは `gpt-5.4` です。
+- リストには現在のモデル（`gpt-5.4-mini`）も含めていますが、ベースラインと同じなので候補からは自動的に除外されます。比較対象になるのは `gpt-5.4` です。
 - リストのモデルは、すべてプロジェクトにデプロイされている必要があります。
 - モデル選択は、指示・スキル・ツールの最適化と同じ実行の中で行われます。改善した指示と別のモデルを組み合わせた候補が出ることもあります。
 
 詳しくは [Evaluate multiple models](https://learn.microsoft.com/azure/foundry/agents/how-to/optimize-agent-targets#evaluate-multiple-models) を参照してください。
+
+> [!WARNING]
+> **モデルを変えた候補が生成されないことがあります（プレビュー）。** 本リポジトリで `model_search_space` を設定して最適化を 3 回実行した際は、いずれも候補モデルへのリクエストがなく、モデルを変えた候補は 1 件も出ませんでした（`Strategy` は `system_prompt` などのみ）。原因は確認できていません。
+>
+> 結果の `Strategy` 列やポータルの Optimize タブにモデルを変えた候補が無い場合は、手動で比較してください。`.agent_configs/baseline/metadata.yaml` の `model` を比較したいモデルデプロイ名に変えて `azd deploy travel-approval-agent --no-prompt` を実行し、同じスイートで `azd ai agent eval run` を実行します。比較が終わったら `model` を元に戻して再デプロイします。
 
 #### Claude を候補に加える（任意）
 
@@ -519,7 +524,17 @@ options:
                    name: GlobalStandard
    ```
 
-2. `eval.yaml` の `model_search_space` にデプロイ名を追加します。
+2. エージェントの ID に、Foundry アカウントのスコープで **Foundry User** ロールを付与します。Claude の呼び出しはエージェント自身の ID で認証されるため、このロールが無いと推論が 401 エラーになります。`<rg>` と `<account>` を自分の値に置き換え、`<agent-principal-id>` には `azd ai agent show --output json` の `instance_identity.principal_id` を指定します。
+
+   ```bash
+   az role assignment create --assignee-object-id "<agent-principal-id>" \
+     --assignee-principal-type ServicePrincipal --role "Foundry User" \
+     --scope $(az cognitiveservices account show -g <rg> -n <account> --query id -o tsv)
+   ```
+
+   ロールの反映には数分かかります。この ID はエージェントのバージョンが上がっても変わらないため、付与は 1 回で済みます。
+
+3. `eval.yaml` の `model_search_space` にデプロイ名を追加します。
 
    ```yaml
        optimization_config:
