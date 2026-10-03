@@ -72,6 +72,11 @@ def create_chat_client(model: str, project_endpoint: str, credential: DefaultAzu
 
 
 def main():
+    # Same format AgentServer uses; it skips its own console handler once one exists.
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+    )
+
     # Load optimization config from .agent_configs/
     config = load_config()
     if config is None:
@@ -103,16 +108,15 @@ def main():
         model, os.environ["FOUNDRY_PROJECT_ENDPOINT"], DefaultAzureCredential()
     )
 
-    if isinstance(client, FoundryChatClient):
-        default_options = {"store": False}
-    else:
-        default_options = {"max_tokens": CLAUDE_MAX_TOKENS}
+    # ResponsesHostServer sets or strips `store` per client, so only Claude needs options.
+    default_options = {}
+    if not isinstance(client, FoundryChatClient):
+        default_options["max_tokens"] = CLAUDE_MAX_TOKENS
 
     agent = Agent(
         client=client,
         instructions=instructions,
         tools=tools,
-        # The Anthropic Messages API rejects the OpenAI-only `store` option.
         default_options=default_options,
     )
 
