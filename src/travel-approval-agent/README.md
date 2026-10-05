@@ -30,6 +30,8 @@
 
 [main.py](main.py) は `load_config()` で最適化用の構成を読み込み、指示・スキル・ツールの説明・モデルをエージェントに反映します。通常は `.agent_configs/baseline/` を使い、候補の適用後は `OPTIMIZATION_CANDIDATE_ID` で指定した構成を使います。
 
+スキルは `Agent` の引数として直接渡すのではなく、`instructions` に組み込んで渡します。固定している SDK `azure-ai-agentserver-optimization==1.0.0b1` の `compose_instructions()` が追加するのは名前と説明の一覧だけなので、`main.py` で各スキルの `body` も追記します。候補がスキル本文を変更した場合も、その本文がエージェントの指示文に反映されます。
+
 実行モデルは、読み込んだ構成の `model` が優先です。モデル指定がない場合だけ環境変数 `AZURE_AI_MODEL_DEPLOYMENT_NAME` を使い、それも未設定なら `gpt-6.1-sol` を使います。環境変数だけでは構成の `model` は上書きされません。
 
 モデル呼び出しには `FoundryChatClient` を使い、モデル名が `claude` で始まる場合だけ Anthropic の Messages API を呼ぶ `AnthropicFoundryClient` に切り替えます。API の公開には OpenAI Responses プロトコル互換の `ResponsesHostServer` を使用します。

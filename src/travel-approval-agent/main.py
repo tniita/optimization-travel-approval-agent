@@ -94,6 +94,9 @@ def main():
         "AZURE_AI_MODEL_DEPLOYMENT_NAME", "gpt-6.1-sol"
     )
     instructions = config.compose_instructions()
+    for skill in config.skills:
+        if skill.body:
+            instructions += f"\n\n### Skill: {skill.name}\n\n{skill.body}"
 
     # Apply optimized tool descriptions
     tools = [lookup_travel_policy, check_department_budget, get_flight_alternatives]
