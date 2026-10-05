@@ -33,7 +33,7 @@ flowchart TD
     C["azd ai agent optimize --optimize-model gpt-5.6-sol --max-candidates 2<br/>候補を生成してランク付け<br/><i>15 サンプル・候補 2 で約 30 分</i>"] --> H{"変更点を読んで<br/>採用する？"}
     H -- はい --> D
     H -- いいえ --> G(["終了、または設定を見直して再試行"])
-    D["azd ai agent optimize apply --candidate &lt;id&gt;<br/>azd deploy<br/>選んだ候補をデプロイ<br/><i>約 2 分</i>"] --> E
+    D["azd ai agent optimize apply --candidate &lt;id&gt;<br/>azd deploy travel-approval-agent<br/>選んだ候補をデプロイ<br/><i>約 2 分</i>"] --> E
     E["azd ai agent eval run + 手動の境界テスト<br/>デプロイ済みエージェントで改善と安全性を確認"] --> F{"結果を確認して<br/>さらに最適化する？"}
     F -- はい --> C
     F -- いいえ --> G
@@ -161,6 +161,19 @@ cd optimization-travel-approval-agent
 
 Python パッケージは、直接依存・間接依存とも `requirements.txt` でバージョン固定しています。通常のデプロイではこのファイルをそのまま使います。更新時は [依存パッケージの固定と更新](src/travel-approval-agent/README.md#依存パッケージの固定と更新) に従い、`requirements.in` と生成された `requirements.txt` を一緒に更新してください。
 
+### Azure CLI の認証と対象確認
+
+以降のリソース確認・権限付与・後片付けで **Azure CLI (`az`) を使う前に**、次の手順を実行します。`azd auth login` とは別に、演習で使用するアカウントでサインインしてください。`azd env` のサブスクリプション設定は、Azure CLI の選択には反映されません。
+
+```bash
+az login
+az account list --output table
+az account set --subscription "<sub>"
+az account show --query "{subscription:name, subscriptionId:id, tenantId:tenantId}" --output table
+```
+
+`<sub>` は一覧から選んだ、今回の演習で使用するサブスクリプション ID に置き換えます。最後の出力でサブスクリプション名・ID・テナント ID が意図した対象であることを確認してから進みます。途中でアカウントや環境を切り替えた場合も、選択と確認をやり直してください。
+
 ### Step 1 の開始までに揃えるもの
 
 1. **ホステッドエージェントがデプロイ済み**の Foundry プロジェクト。最適化サイクルはデプロイ済みのエージェントを呼び出して評価するため、Step 1 より前に必要です。最初から用意されている必要はありません。未デプロイなら後述の「[エージェントをホステッドエージェントとしてデプロイする](#エージェントをホステッドエージェントとしてデプロイする)」で作成し、動作確認まで進めます。
@@ -237,6 +250,8 @@ azd env set AZURE_RESOURCE_GROUP "<rg>"
 ```
 
 プロジェクトのエンドポイントが `https://agent-optimizer.services.ai.azure.com/api/projects/proj-default` の場合、`<account>` は `agent-optimizer`、`<project>` は `proj-default` です。サブスクリプション ID とリソースグループ名は Azure portal のプロジェクト概要、または次のコマンドで確認できます。
+
+以下の `az` コマンドを使う場合は、先に「[Azure CLI の認証と対象確認](#azure-cli-の認証と対象確認)」を済ませてください。
 
 ```bash
 az account show --query id --output tsv
@@ -498,6 +513,8 @@ Per-criteria results:
 
 ### コマンド
 
+モデル選択を使う場合は、先に下の「[モデル選択を有効にする](#モデル選択を有効にする)」を済ませてから実行します。
+
 ```bash
 azd ai agent optimize --optimize-model gpt-5.6-sol --max-candidates 2
 ```
@@ -556,6 +573,8 @@ Foundry の Claude は OpenAI 互換の API ではなく Anthropic の Messages 
    ```
 
 2. エージェントの ID に、Foundry アカウントのスコープで **Foundry User** ロールを付与します。Claude の呼び出しはエージェント自身の ID で認証されるため、このロールが無いと推論が 401 エラーになります。`<rg>` と `<account>` を自分の値に置き換え、`<agent-principal-id>` には `azd ai agent show --output json` の `instance_identity.principal_id` を指定します。
+
+  実行前に「[Azure CLI の認証と対象確認](#azure-cli-の認証と対象確認)」を済ませ、対象の Foundry アカウントが属するサブスクリプションを選択してください。
 
    ```bash
    az role assignment create --assignee-object-id "<agent-principal-id>" \
@@ -670,11 +689,7 @@ azd ai agent optimize apply --candidate "<自分の実行で得た候補 ID>"
     Optimized: src/travel-approval-agent/.agent_configs/cand_opt_..._0002
 ```
 
-表示されるのは指示文の差分だけです。上の例はツール最適化の候補なので指示文は同じです。`tools.json` やスキルの変更も含めて、次の「[採用前に変更点を読む](#採用前に変更点を読む)」で内容を確認できたらデプロイします。
-
-```bash
-azd deploy travel-approval-agent --no-prompt
-```
+  表示されるのは指示文の差分だけです。上の例はツール最適化の候補なので指示文は同じです。`tools.json` やスキルの変更も含めて、次の「[採用前に変更点を読む](#採用前に変更点を読む)」で内容を確認します。
 
 ### 採用前に変更点を読む
 
@@ -693,14 +708,15 @@ diff -r src/travel-approval-agent/.agent_configs/baseline \
 
 本文の実行例（candidate_2）では、指示文とスキルはそのままで、`tools.json` の 3 つのツール説明が詳しくなっていました。たとえば `lookup_travel_policy` には「Retrieve the authoritative company travel-policy rules … Apply returned limits exactly, including boundary conditions」とあり、ツールの結果を根拠に判断する方針がより明確になっています。
 
-ホステッドエージェントでは、候補のデプロイに **`optimize apply` と `azd deploy` の組み合わせを使用してください**。`azd ai agent optimize deploy --candidate <id>` は、現行の CLI 拡張では `code_configuration` を JSON として送信してしまい、次の 400 エラーになることがあります。
+### 確認した候補をデプロイする
 
-```text
-code_configuration is not supported with application/json.
-Use multipart/form-data instead.
+変更点を確認して採用を決めたら、次のコマンドを実行します。`optimize apply` は実行済みなので、ここでは繰り返しません。
+
+```bash
+azd deploy travel-approval-agent --no-prompt
 ```
 
-この場合は、候補をローカルに適用してから通常のコードデプロイを実行します。
+Step 3 の実行結果で CLI が案内する `azd deploy` ではなく、上のようにサービス名を付けて実行します（[エージェントだけをデプロイする](#2-デプロイする)を参照）。本手順では `azd ai agent optimize deploy` は使いません。
 
 ### `apply` が `azure.yaml` に行う変更
 
