@@ -78,7 +78,7 @@ src/<agent-name>/
 ├── main.py
 └── .agent_configs/
     └── baseline/
-        ├── metadata.yaml      # モデル、ファイル参照、temperature
+        ├── metadata.yaml      # モデル、ファイル参照
         ├── instructions.md    # システムプロンプト（指示チューニングを有効化）
         ├── skills/            # SKILL.md フォルダー群（スキル最適化を有効化）
         └── tools.json         # ツール定義（ツール最適化を有効化）
@@ -704,7 +704,7 @@ Use multipart/form-data instead.
 
 ### `apply` が `azure.yaml` に行う変更
 
-エージェントのサービスブロックに `env:` マップが書き込まれ、そこに `OPTIMIZATION_CANDIDATE_ID` が入ります。既存の `environmentVariables:`（リスト形式）は `env:`（マップ形式）に変換されます。
+エージェントのサービスブロックの `env:` マップに、`OPTIMIZATION_CANDIDATE_ID` が追加されます。
 
 ```yaml
 services:
@@ -969,7 +969,7 @@ azd ai agent delete "<確認した演習専用のエージェント名>"
 
 3. **`--optimize-model` は必須です。** 省略すると `invalid config: options.optimization_model is required` と表示されます。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
 4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` だけが入っています。`optimization_model` は `--optimize-model` でも渡せますが、`optimization_config.model_search_space` に対応するフラグは無いため、`eval.yaml` に追記します。`eval run` の後は `model_search_space` の形式も確認してください（[Step 6](#step-6--反復する再度最適化) 参照）。
-5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
+5. **候補数は `--max-candidates`**（既定 5）です。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
 6. **リフレクションモデルはサポート対象から選びます**（[前提条件](#step-1-の開始までに揃えるもの)の一覧を参照）。`gpt-5.4-mini` などの mini 系はサポート外です。本手順の `gpt-5.6-sol` は公式の一覧に無いものの、本文の実行例では受け付けられました。エラーになった場合は一覧のモデルに切り替えます。
 7. **評価モデルのデプロイを事前に確認します。** 評価モデルがデプロイされていないと、スコアがすべて 0 になります。実行前にポータルで確認してください。
 8. **評価中にツールが実際に呼ばれます。** ツールが状態を変更する・呼び出しごとに課金される場合は、モック化するかテスト用エンドポイントに向けてください。
