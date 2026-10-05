@@ -38,3 +38,8 @@ node_modules/
 # Docker (not used in code deploy)
 Dockerfile
 .dockerignore
+
+# Evaluation assets (used only by azd ai agent eval / optimize)
+eval*.yaml
+datasets/
+evaluators/
