@@ -11,7 +11,7 @@
 | 項目 | 始める前に知っておくこと |
 |---|---|
 | 対象読者 | ターミナルでコマンドを実行でき、Azure サブスクリプションを利用できる方。オプティマイザーは初めてでも構いません |
-| 所要時間 | 評価・最適化には数十分を見込んでください。最適化だけで候補 1 件は約 10 分、5 件は約 35 分の実測例があります。環境準備・初回デプロイ・評価の時間は別途必要です |
+| 所要時間 | 評価・最適化には数十分を見込んでください。本手順の構成では、最適化（15 件・候補 2）だけで約 27 分の実測例があります。候補数を増やすと、ほぼ比例して長くなります。環境準備・初回デプロイ・評価の時間は別途必要です |
 | 費用 | Azure のモデル推論とホステッドエージェントの実行に利用料金が発生します。無料のローカル演習ではありません。候補数・データセット件数を増やすと呼び出しも増えます |
 | 安全な実行先 | 検証用プロジェクトを推奨します。自分の業務ツールに置き換える場合、評価中にも実行されるため、テスト用の接続先やモックを使ってください |
 
@@ -166,7 +166,7 @@ Python パッケージは、直接依存・間接依存とも `requirements.txt`
    - **`gpt-5.6-sol`** — 最適化（リフレクション）に使うモデル。
    - **`claude-sonnet-5-5`** — [モデル選択](#モデル選択を有効にする)で `gpt-6.1-sol` と比較する、エージェント用の候補モデル。Step 3 のモデル選択までに用意します。
 
-   公式ドキュメントに記載されている最適化（リフレクション）モデルは `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro`、`DeepSeek-V-3.2` です（2026 年 10 月時点）。本手順で使う `gpt-5.6-sol` はこの一覧にありません。サポート外と判定された場合、サービスは使用できるモデルの一覧を含むエラーを返します。その場合は一覧のモデルをデプロイし、`--optimize-model` と `optimization_model` をそのデプロイ名に置き換えてください。
+   公式ドキュメントに記載されている最適化（リフレクション）モデルは `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro`、`DeepSeek-V-3.2` です（2026 年 10 月時点）。本手順で使う `gpt-5.6-sol` はこの一覧にありませんが、本文の実行例（2026 年 10 月）では受け付けられ、最適化が完了しました。サポート外と判定された場合、サービスは使用できるモデルの一覧を含むエラーを返します。その場合は一覧のモデルをデプロイし、`--optimize-model` と `optimization_model` をそのデプロイ名に置き換えてください。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。**本サンプルは対応済みです。** 自分のエージェントに適用する場合は、[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
 
 > [!WARNING]
@@ -303,7 +303,9 @@ azd ai agent invoke "3日間の東京出張を申請します。航空券とホ�
 azd ai agent eval generate --eval-model gpt-6-astra
 ```
 
-`--eval-model` で指定したモデルが、生成と以降の評価（`eval.yaml` の `options.eval_model`）に使われます。生成済みの `eval.yaml` がある場合は、`options.eval_model` を `gpt-6-astra` に書き換えてください。
+`--eval-model` で指定したモデルが、生成と以降の評価（`eval.yaml` の `options.eval_model`）に使われます。
+
+`src/travel-approval-agent/eval.yaml` がすでにある場合（生成し直すときなど）は、`--reset-defaults` を付けないと既存の設定がそのまま残ります。`--reset-defaults` で上書きすると `optimization_model` と `model_search_space` も消えるので、Step 3 の「[モデル選択を有効にする](#モデル選択を有効にする)」で追記し直します。
 
 データセットの生成は 10 分以上かかることがあります。CLI が `Timed out` と表示して戻った場合もジョブはサーバー側で続いているので、しばらく待ってから `azd ai agent eval run` を実行すると、データセットを取得したうえで Step 2 の評価に進みます。この場合も、下の「[生成物を確認する](#生成物を確認する)」をあわせて行ってください。
 
@@ -355,7 +357,7 @@ Generation jobs timed out but are still running on the server.
      azd ai agent eval run
 ```
 
-上の実行例は `--name smoke-spec` を付けて実行したものです。データセットはサーバー側の完了後に `azd ai agent eval run` で取得しました。生成されたルーブリックのディメンションは次のとおりです。
+上の実行例は `--name smoke-spec` を付け、現在の `instructions.md` と同じ内容を `--gen-instruction-file` で渡して実行したものです。当時のエージェントの指示文は 4 行の短いものだったため、Step 2〜5 の実行例のスコアは、現在の `instructions.md` で実行した場合とは異なります。データセットはサーバー側の完了後に `azd ai agent eval run` で取得しました。生成されたルーブリックのディメンションは次のとおりです。
 
 | Weight | Dimension |
 |---:|---|
@@ -414,7 +416,6 @@ agent:
     name: travel-approval-agent
     kind: hosted
     version: "9"
-    config: .agent_configs/baseline/metadata.yaml
 dataset:
     name: smoke-spec
     version: "1.0"
@@ -604,6 +605,7 @@ Results:
 - `Strategy` 列に、その候補がどの最適化ターゲットで生成されたかが出ます（上の例は `skills` = スキル改善、`tools` = ツール最適化）。
 - 勝者は**常に candidate_1 とは限りません**。上の例でも ★ は candidate_2 です。候補がどれもベースラインを下回った場合は **`baseline ★`** になるので、`apply` せずに候補数を増やすなどして再実行します。
 - `--max-candidates` は上限です。改善が頭打ちになると、指定より少ない候補数で終了することがあります。
+- `model_search_space` を設定しても、モデルを変えた候補が出るとは限りません。上の例でも候補は `skills` と `tools` の 2 件で、`claude-sonnet-5-5` を使う候補は出ていません。モデルを確実に比べたい場合は、`metadata.yaml` の `model` を変えてデプロイし、`azd ai agent eval run` の結果を比べます。
 - **`Candidate IDs:` ブロックの ID を次のステップで使います。**
 - 候補別のモデルやスコア vs トークンのプロットを見るには、**Foundry ポータルの Optimize タブ**を使います。過去の実行は `azd ai agent optimize list` / `azd ai agent optimize status <id>` でも確認できます。
 
@@ -655,8 +657,8 @@ azd deploy travel-approval-agent --no-prompt
 スコアだけでなく、変更の中身がエージェントの仕様に沿っているかも確認してから採用します。`apply` が書き出した `.agent_configs/<candidate-id>/` と `baseline/` を比べて、指示文・`tools.json`・`skills/` の変更を読みます。
 
 ```bash
-cd src/travel-approval-agent/.agent_configs
-diff -r baseline "<自分の実行で得た候補 ID>"
+diff -r src/travel-approval-agent/.agent_configs/baseline \
+  "src/travel-approval-agent/.agent_configs/<自分の実行で得た候補 ID>"
 ```
 
 特に次の点が保たれていることを確認します。
@@ -680,18 +682,18 @@ Use multipart/form-data instead.
 
 ```text
   Fetching candidate config...
-  → src/travel-approval-agent/.agent_configs/cand_opt_..._0001/metadata.yaml
+  → src/travel-approval-agent/.agent_configs/cand_opt_..._0002/metadata.yaml
   Updating agent definition in azure.yaml...
 
-  ✓ Candidate cand_opt_..._0001 applied to .agent_configs/cand_opt_..._0001
+  ✓ Candidate cand_opt_..._0002 applied to .agent_configs/cand_opt_..._0002
 
   Instruction diff (baseline → optimized):
-    — Baseline (4 lines, 274 chars):
-    — Optimized (4 lines, 274 chars):
+    — Baseline (<n> lines, <m> chars):
+    — Optimized (<n> lines, <m> chars):
 
   For other changes (skills, tools, etc.), compare the files in:
     Baseline:  src/travel-approval-agent/.agent_configs/baseline
-    Optimized: src/travel-approval-agent/.agent_configs/cand_opt_..._0001
+    Optimized: src/travel-approval-agent/.agent_configs/cand_opt_..._0002
 ```
 
 表示されるのは指示文の差分だけです。上の例はツール最適化の候補なので指示文は同じです。`tools.json` やスキルの変更は、表示された 2 つのフォルダーを比べて確認します。
@@ -706,7 +708,7 @@ services:
         env:
             AZURE_AI_MODEL_DEPLOYMENT_NAME: ${AZURE_AI_MODEL_DEPLOYMENT_NAME}
             OPTIMIZATION_LOCAL_DIR: .agent_configs
-            OPTIMIZATION_CANDIDATE_ID: cand_opt_..._0001   # ← エージェントが読む構成を決める
+            OPTIMIZATION_CANDIDATE_ID: cand_opt_..._0002   # ← エージェントが読む構成を決める
 ```
 
 実行時、`load_config()` は次の優先順位で解決します（[Python SDK README](https://learn.microsoft.com/python/api/overview/azure/ai-agentserver-optimization-readme?view=azure-python-preview#key-concepts)）:
@@ -852,7 +854,7 @@ azd ai agent optimize --optimize-model gpt-5.6-sol --max-candidates 2
 3. **`--optimize-model` は必須です。** 省略すると `invalid config: options.optimization_model is required` と表示されます。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
 4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` だけが入っています。`optimization_model` や `optimization_config.model_search_space` は自分で追記するか、フラグで渡します。`eval run` の後は `model_search_space` の形式も確認してください（[Step 6](#step-6--反復する再度最適化) 参照）。
 5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
-6. **リフレクションモデルはサポート対象から選びます**（[前提条件](#step-1-の開始までに揃えるもの)の一覧を参照）。`gpt-5.4-mini` などの mini 系はサポート外です。本手順の `gpt-5.6-sol` は公式の一覧に無いため、エラーになった場合は一覧のモデルに切り替えます。
+6. **リフレクションモデルはサポート対象から選びます**（[前提条件](#step-1-の開始までに揃えるもの)の一覧を参照）。`gpt-5.4-mini` などの mini 系はサポート外です。本手順の `gpt-5.6-sol` は公式の一覧に無いものの、本文の実行例では受け付けられました。エラーになった場合は一覧のモデルに切り替えます。
 7. **評価モデルのデプロイを事前に確認します。** 評価モデルがデプロイされていないと、スコアがすべて 0 になります。実行前にポータルで確認してください。
 8. **評価中にツールが実際に呼ばれます。** ツールが状態を変更する・呼び出しごとに課金される場合は、モック化するかテスト用エンドポイントに向けてください。
 9. **候補はドラフトバージョンです。** 最適化中に作られる候補は、`optimize apply` + `azd deploy` するまで稼働中のバージョンに影響しません。ホステッドエージェントでは、直接の `optimize deploy` ではなくこの手順を使います。
