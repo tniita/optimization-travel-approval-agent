@@ -496,7 +496,7 @@ Per-criteria results:
 azd ai agent optimize --optimize-model gpt-5.6-sol --max-candidates 2
 ```
 
-**対話プロンプトはありません。** `--optimize-model` は必須で、省略すると次のメッセージが表示されます。
+`--optimize-model` は必須で、省略すると次のメッセージが表示されます。
 
 ```text
 ERROR: invalid config: options.optimization_model is required:
@@ -646,7 +646,25 @@ Results:
 azd ai agent optimize apply --candidate "<自分の実行で得た候補 ID>"
 ```
 
-デプロイする前に、次の「[採用前に変更点を読む](#採用前に変更点を読む)」を行い、内容を確認できたらデプロイします。
+`apply` は勝者候補の構成をローカルの `.agent_configs/<candidate-id>/` に書き出し、デプロイされるコンテナがそれを読み込むよう **`azure.yaml` を更新**します。実行すると指示文の差分（ベースライン → 最適化後）も表示されます。
+
+```text
+  Fetching candidate config...
+  → src/travel-approval-agent/.agent_configs/cand_opt_..._0002/metadata.yaml
+  Updating agent definition in azure.yaml...
+
+  ✓ Candidate cand_opt_..._0002 applied to .agent_configs/cand_opt_..._0002
+
+  Instruction diff (baseline → optimized):
+    — Baseline (<n> lines, <m> chars):
+    — Optimized (<n> lines, <m> chars):
+
+  For other changes (skills, tools, etc.), compare the files in:
+    Baseline:  src/travel-approval-agent/.agent_configs/baseline
+    Optimized: src/travel-approval-agent/.agent_configs/cand_opt_..._0002
+```
+
+表示されるのは指示文の差分だけです。上の例はツール最適化の候補なので指示文は同じです。`tools.json` やスキルの変更も含めて、次の「[採用前に変更点を読む](#採用前に変更点を読む)」で内容を確認できたらデプロイします。
 
 ```bash
 azd deploy travel-approval-agent --no-prompt
@@ -678,26 +696,6 @@ Use multipart/form-data instead.
 
 この場合は、候補をローカルに適用してから通常のコードデプロイを実行します。
 
-`apply` は勝者候補の構成をローカルの `.agent_configs/<candidate-id>/` に書き出し、デプロイされるコンテナがそれを読み込むよう **`azure.yaml` を更新**します。実行すると指示文の差分（ベースライン → 最適化後）も表示されます。
-
-```text
-  Fetching candidate config...
-  → src/travel-approval-agent/.agent_configs/cand_opt_..._0002/metadata.yaml
-  Updating agent definition in azure.yaml...
-
-  ✓ Candidate cand_opt_..._0002 applied to .agent_configs/cand_opt_..._0002
-
-  Instruction diff (baseline → optimized):
-    — Baseline (<n> lines, <m> chars):
-    — Optimized (<n> lines, <m> chars):
-
-  For other changes (skills, tools, etc.), compare the files in:
-    Baseline:  src/travel-approval-agent/.agent_configs/baseline
-    Optimized: src/travel-approval-agent/.agent_configs/cand_opt_..._0002
-```
-
-表示されるのは指示文の差分だけです。上の例はツール最適化の候補なので指示文は同じです。`tools.json` やスキルの変更は、表示された 2 つのフォルダーを比べて確認します。
-
 ### `apply` が `azure.yaml` に行う変更
 
 エージェントのサービスブロックに `env:` マップが書き込まれ、そこに `OPTIMIZATION_CANDIDATE_ID` が入ります。既存の `environmentVariables:`（リスト形式）は `env:`（マップ形式）に変換されます。
@@ -722,7 +720,7 @@ services:
 つまり `azd deploy` は `OPTIMIZATION_CANDIDATE_ID` が設定された状態でコンテナを出荷するので、`baseline/` ではなく `.agent_configs/<candidate-id>/metadata.yaml` を読みます。ベースラインに戻すには、**`azure.yaml` の `env:` から `OPTIMIZATION_CANDIDATE_ID` を削除**して再デプロイします。
 
 > [!IMPORTANT]
-> **候補フォルダーが無いと、エラーなしでベースラインのまま動きます。** `OPTIMIZATION_CANDIDATE_ID` が設定されていても、`.agent_configs/<candidate-id>/` が存在しない場合、`load_config()` はエラーを出さずに `baseline/` を読み込みます（ログは `Loaded optimization config from local directory: ...\baseline (candidate_id=cand_...)` になります）。`apply` で生成された候補フォルダーは `azure.yaml` の変更と**一緒にコミット**してください。候補フォルダーを含めずにリポジトリを共有・クローンすると、最適化前の構成がデプロイされます。
+> **候補フォルダーが無いと、エラーなしでベースラインのまま動きます。** `OPTIMIZATION_CANDIDATE_ID` が設定されていても、`.agent_configs/<candidate-id>/` が存在しない場合、`load_config()` はエラーを出さずに `baseline/` を読み込みます（ログは `Loaded optimization config from local directory: .../baseline (candidate_id=cand_...)` になります）。`apply` で生成された候補フォルダーは `azure.yaml` の変更と**一緒にコミット**してください。候補フォルダーを含めずにリポジトリを共有・クローンすると、最適化前の構成がデプロイされます。
 >
 > また、`OPTIMIZATION_LOCAL_DIR` に相対パスを指定した場合、カレントディレクトリではなく**起動スクリプト（`main.py`）のあるフォルダー**を基準に解決されます。構成がひとつも見つからないと `load_config()` は `None` を返すため、本サンプルの `main.py` はその場合にわかりやすいエラーで起動を停止します。
 
@@ -773,6 +771,8 @@ Per-criteria results:
 
 **この実行例の合格率: 15/15 (100%)、Step 2 のベースラインも 15/15 (100%)** — 合格率は維持したまま、ルーブリックの平均スコアは 0.675（v9）から 0.738（v10）に上がりました。オプティマイザーが報告した改善（0.713 → 0.746）と同じ方向の結果が、デプロイ済みのエージェントでも得られています。平均スコアはポータルの Report で確認できます。
 
+同じ v9 でも、オプティマイザーのベースライン（0.713）と Step 2 の `eval run` の平均（0.675）は一致しません。LLM の応答と採点は実行ごとに揺れるためです。改善を確かめるときは、同じ方法で測った値どうし（オプティマイザーの値どうし、`eval run` の値どうし）を比べます。
+
 > オプティマイザーが報告するスコアと `eval run` の合格率は別の指標です。前者はルーブリックの加重平均、後者はタスク単位の二値判定です。合格率が上限に達している場合は、スコアの変化で改善を確かめます。最適化に使っていない検証データでも確認すると、より確実です。
 
 ### 判断の根拠を手動で確かめる
@@ -813,7 +813,7 @@ azd ai agent optimize --optimize-model gpt-5.6-sol --max-candidates 2
 | ファイル | 役割 |
 |---|---|
 | `azure.yaml` | `azd` のサービス定義 + エージェントの環境変数（`OPTIMIZATION_CANDIDATE_ID` の場所） |
-| `src/<agent>/eval.yaml` | 評価・最適化のレシピ |
+| `src/<agent>/eval.yaml` | 評価・最適化のレシピ（Step 1 で生成。リポジトリには含まない） |
 | `src/<agent>/main.py` | `azure.ai.agentserver.optimization` の `load_config()` を呼び出す |
 | `src/<agent>/.agent_configs/baseline/` | オプティマイザーが比較対象とするベースライン構成 |
 | `src/<agent>/.agent_configs/<cand_id>/` | 適用した候補のローカルコピー |
@@ -852,7 +852,7 @@ azd ai agent optimize --optimize-model gpt-5.6-sol --max-candidates 2
 ### 最適化の設定
 
 3. **`--optimize-model` は必須です。** 省略すると `invalid config: options.optimization_model is required` と表示されます。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
-4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` だけが入っています。`optimization_model` や `optimization_config.model_search_space` は自分で追記するか、フラグで渡します。`eval run` の後は `model_search_space` の形式も確認してください（[Step 6](#step-6--反復する再度最適化) 参照）。
+4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` だけが入っています。`optimization_model` は `--optimize-model` でも渡せますが、`optimization_config.model_search_space` に対応するフラグは無いため、`eval.yaml` に追記します。`eval run` の後は `model_search_space` の形式も確認してください（[Step 6](#step-6--反復する再度最適化) 参照）。
 5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
 6. **リフレクションモデルはサポート対象から選びます**（[前提条件](#step-1-の開始までに揃えるもの)の一覧を参照）。`gpt-5.4-mini` などの mini 系はサポート外です。本手順の `gpt-5.6-sol` は公式の一覧に無いものの、本文の実行例では受け付けられました。エラーになった場合は一覧のモデルに切り替えます。
 7. **評価モデルのデプロイを事前に確認します。** 評価モデルがデプロイされていないと、スコアがすべて 0 になります。実行前にポータルで確認してください。
