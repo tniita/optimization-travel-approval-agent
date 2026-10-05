@@ -46,6 +46,8 @@ flowchart TD
     class G done;
 ```
 
+> [!NOTE]
+> 本文の実行例とスクリーンショットは、2026 年 10 月の検証（以下「Dry Run」）の結果です。既存のエージェントを変更しないよう、専用名 `travel-approval-dryrun-20261005` のエージェントで実行しました。自分で実行する際は、エージェント名やスイート名を自分の値に読み替えてください。Dry Run ではベースラインが最良だったため、候補を採用する Step 4〜5 は実行していません。
 
 ---
 
@@ -77,7 +79,7 @@ src/<agent-name>/
 ├── main.py
 └── .agent_configs/
     └── baseline/
-        ├── metadata.yaml      # モデル、ファイル参照、temperature
+        ├── metadata.yaml      # モデル、ファイル参照
         ├── instructions.md    # システムプロンプト（指示チューニングを有効化）
         ├── skills/            # SKILL.md フォルダー群（スキル最適化を有効化）
         └── tools.json         # ツール定義（ツール最適化を有効化）
@@ -180,7 +182,7 @@ az account show --query "{subscription:name, subscriptionId:id, tenantId:tenantI
    - **`gpt-6.1-sol`** — エージェントが応答に使うモデル（`metadata.yaml` の `model`）。
    - **`gpt-6-astra`** — 評価（ジャッジ）に使うモデル。評価に使うモデルは Chat completion model であること。
    - **`gpt-5.6-sol`** — 最適化（リフレクション）に使うモデル。
-  - **`claude-sonnet-5-5`（任意）** — [モデル選択](#モデル選択を有効にする)で `gpt-6.1-sol` との比較を試す場合だけ使う候補モデル。基本手順では準備不要です。比較する場合は Step 3 の実行前に[Claude Sonnet を準備する](#claude-sonnet-を準備する)の手順で追加します。
+   - **`claude-sonnet-5-5`（任意）** — [モデル選択](#モデル選択を有効にする)で `gpt-6.1-sol` との比較を試す場合だけ使う候補モデル。基本手順では準備不要です。比較する場合は Step 3 の実行前に[Claude Sonnet を準備する](#claude-sonnet-を準備する)の手順で追加します。
 
    公式ドキュメントに記載されている最適化（リフレクション）モデルは `gpt-5`、`gpt-5.1`、`gpt-5.2`、`gpt-5.4`、`gpt-5.5`、`DeepSeek-V4-Pro`、`DeepSeek-V-3.2` です（2026 年 10 月時点）。本手順で使う `gpt-5.6-sol` はこの一覧にありませんが、本文の実行例（2026 年 10 月）では受け付けられ、最適化が完了しました。サポート外と判定された場合、サービスは使用できるモデルの一覧を含むエラーを返します。その場合は一覧のモデルをデプロイし、`--optimize-model` と `optimization_model` をそのデプロイ名に置き換えてください。
 3. エージェントが**オプティマイザー対応済み**であること: `main.py` が `azure.ai.agentserver.optimization` の `load_config()` を呼び出している必要があります。**本サンプルは対応済みです。** 自分のエージェントに適用する場合は、[エージェントをオプティマイザー対応にする](https://learn.microsoft.com/azure/foundry/agents/how-to/make-agent-optimizer-ready) を参照してください。
@@ -417,18 +419,18 @@ Step 2 に進む前に、生成された `rubric_dimensions.json` とデータ�
 name: dryrun-pr15-20261005
 agent:
   name: travel-approval-dryrun-20261005
-    kind: hosted
+  kind: hosted
   config: .agent_configs/baseline/metadata.yaml
 dataset:
   name: dryrun-pr15-20261005
-    version: "1.0"
+  version: "1.0"
   local_uri: datasets/dryrun-pr15-20261005
 evaluators:
   - name: dryrun-pr15-20261005
-      version: "1"
+    version: "1"
     local_uri: evaluators/dryrun-pr15-20261005/rubric_dimensions.json
 options:
-    eval_model: gpt-6-astra
+  eval_model: gpt-6-astra
 max_samples: 15
 ```
 
@@ -564,7 +566,7 @@ Foundry の Claude は OpenAI 互換の API ではなく Anthropic の Messages 
 
 2. エージェントの ID に、Foundry アカウントのスコープで **Foundry User** ロールを付与します。Claude の呼び出しはエージェント自身の ID で認証されるため、このロールが無いと推論が 401 エラーになります。`<rg>` と `<account>` を自分の値に置き換え、`<agent-principal-id>` には `azd ai agent show --output json` の `instance_identity.principal_id` を指定します。
 
-  実行前に「[Azure CLI の認証と対象確認](#azure-cli-の認証と対象確認)」を済ませ、対象の Foundry アカウントが属するサブスクリプションを選択してください。
+   実行前に「[Azure CLI の認証と対象確認](#azure-cli-の認証と対象確認)」を済ませ、対象の Foundry アカウントが属するサブスクリプションを選択してください。
 
    ```bash
    az role assignment create --assignee-object-id "<agent-principal-id>" \
@@ -712,7 +714,7 @@ Step 3 の実行結果で CLI が案内する `azd deploy` ではなく、上の
 
 ### `apply` が `azure.yaml` に行う変更
 
-エージェントのサービスブロックに `env:` マップが書き込まれ、そこに `OPTIMIZATION_CANDIDATE_ID` が入ります。既存の `environmentVariables:`（リスト形式）は `env:`（マップ形式）に変換されます。
+エージェントのサービスブロックの `env:` マップに、`OPTIMIZATION_CANDIDATE_ID` が追加されます。
 
 ```yaml
 services:
@@ -960,7 +962,7 @@ azd ai agent delete "<確認した演習専用のエージェント名>"
 
 3. **`--optimize-model` は必須です。** 省略すると `invalid config: options.optimization_model is required` と表示されます。`eval.yaml` の `options.optimization_model` に書いておけばフラグを省略できます。
 4. **`eval generate` は最適化系の設定を書きません。** 生成直後の `eval.yaml` の `options:` には `eval_model` だけが入っています。`optimization_model` は `--optimize-model` でも渡せます。モデル比較を使う場合だけ、対応するフラグのない `optimization_config.model_search_space` を `eval.yaml` に追記し、`eval run` の後も形式を確認してください（[Step 6](#step-6--反復する再度最適化) 参照）。
-5. **候補数は `--max-candidates`**（既定 5）です。旧い `max_iterations` という名前のフラグはありません。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
+5. **候補数は `--max-candidates`**（既定 5）です。所要時間はこの値にほぼ比例するので、試しなら `1` から始めましょう。
 6. **リフレクションモデルはサポート対象から選びます**（[前提条件](#step-1-の開始までに揃えるもの)の一覧を参照）。`gpt-5.4-mini` などの mini 系はサポート外です。本手順の `gpt-5.6-sol` は公式の一覧に無いものの、本文の実行例では受け付けられました。エラーになった場合は一覧のモデルに切り替えます。
 7. **評価モデルのデプロイを事前に確認します。** 評価モデルがデプロイされていないと、スコアがすべて 0 になります。実行前にポータルで確認してください。
 8. **評価中にツールが実際に呼ばれます。** ツールが状態を変更する・呼び出しごとに課金される場合は、モック化するかテスト用エンドポイントに向けてください。
